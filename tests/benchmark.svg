@@ -1,0 +1,42 @@
+<svg x="0" y="0" width="305" height="190" viewBox="0, 0, 305, 190" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100%" height="100%" fill="#000" />
+  <defs>
+    <linearGradient id="g1" x1="0" x2="0" y1="0" y2="1">
+      <stop stop-color="#19aade" offset="0%"/>
+      <stop stop-color="#37d4f0" offset="100%"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" x2="0" y1="0" y2="1">
+      <stop stop-color="#11998e" offset="0%"/>
+      <stop stop-color="#38ef7d" offset="100%"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <text font-family="sans-serif" font-size="12" x="25" y="20" fill="#fff">Select 100 rows</text>
+    <text font-family="sans-serif" font-size="10" x="25" y="32" fill="#fff">ns/op, less is better</text>
+  </g>
+  <g>
+    <rect x="250" y="10" width="10" height="10" fill="url(#g2)"></rect>
+    <text font-family="sans-serif" font-size="10" x="265" y="18" fill="#fff">native</text>
+  </g>
+  <g>
+    <rect x="25" y="108.4" width="30" height="46.6" fill="url(#g1)"></rect>
+    <rect x="60" y="101.6" width="30" height="53.4" fill="url(#g2)"></rect>
+    <text font-family="sans-serif" font-size="12" text-anchor="middle" x="57.5" y="170" fill="#fff">pq</text>
+    <text font-family="sans-serif" font-size="8" text-anchor="middle" x="40" y="102.4" fill="#fff">200235</text>
+    <text font-family="sans-serif" font-size="8" text-anchor="middle" x="75" y="95.6" fill="#fff">229372</text>
+  </g>
+  <g>
+    <rect x="120" y="117.9" width="30" height="37.1" fill="url(#g1)"></rect>
+    <rect x="155" y="114.5" width="30" height="40.5" fill="url(#g2)"></rect>
+    <text font-family="sans-serif" font-size="12" text-anchor="middle" x="152.5" y="170" fill="#fff">pgx</text>
+    <text font-family="sans-serif" font-size="8" text-anchor="middle" x="135" y="111.9" fill="#fff">159413</text>
+    <text font-family="sans-serif" font-size="8" text-anchor="middle" x="170" y="108.5" fill="#fff">173980</text>
+  </g>
+  <g>
+    <rect x="215" y="55" width="30" height="100" fill="url(#g1)"></rect>
+    <rect x="250" y="96.8" width="30" height="58.2" fill="url(#g2)"></rect>
+    <text font-family="sans-serif" font-size="12" text-anchor="middle" x="247.5" y="170" fill="#fff">gopg</text>
+    <text font-family="sans-serif" font-size="8" text-anchor="middle" x="230" y="49" fill="#fff">429494</text>
+    <text font-family="sans-serif" font-size="8" text-anchor="middle" x="265" y="90.8" fill="#fff">250156</text>
+  </g>
+</svg>
