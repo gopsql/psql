@@ -193,6 +193,11 @@ func (m *Model) SetOptions(options ...interface{}) *Model {
 	return m
 }
 
+// Return database connection for the Model.
+func (m *Model) Connection() db.DB {
+	return m.connection
+}
+
 // Set a database connection for the Model. ErrNoConnection is returned if no
 // connection is set.
 func (m *Model) SetConnection(db db.DB) *Model {
