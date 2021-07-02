@@ -107,6 +107,11 @@ var newPostId int
 m.Insert(
 	m.Permit("Title", "Picture").Filter(`{ "Title": "hello", "Picture": "world!" }`),
 )("RETURNING id").MustQueryRow(&newPostId)
+// or:
+m.Insert(
+	"Title", "hello",
+	"Picture", "world!",
+)("RETURNING id").MustQueryRow(&newPostId)
 ```
 
 ### Find Record

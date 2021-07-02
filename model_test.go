@@ -1,6 +1,7 @@
 package psql
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -33,6 +34,12 @@ type (
 		Picture   string              `jsonb:"meta"`
 		CreatedAt time.Time
 		UpdatedAt time.Time
+	}
+
+	product struct {
+		Id    int    `json:"id"`
+		Name  string `json:"name"`
+		Price int    `json:"PRICE"`
 	}
 )
 
@@ -156,6 +163,54 @@ func TestModel(_t *testing.T) {
 	m3 := NewModel(user{})
 	t.String(m3.tableName, "users")
 	t.Int(len(m3.modelFields), 4)
+
+	m4 := NewModel(product{})
+	t.String(m4.tableName, "products")
+	t.Int(len(m4.modelFields), 3)
+	x0 := "INSERT INTO products (name, price) VALUES ($1, $2)"
+	x1 := m4.Insert(
+		m4.Changes(RawChanges{"name": "test"}),
+		m4.Changes(RawChanges{"PRICE": 2}),
+	)()
+	t.String(x1.String(), x0)
+	x2 := m4.Insert(
+		m4.FieldChanges(RawChanges{"Name": "test"}),
+		m4.FieldChanges(RawChanges{"Price": 2}),
+	)()
+	t.String(x2.String(), x0)
+	x3 := m4.Insert("Name", "test", "Price", 2)()
+	t.String(x3.String(), x0)
+	x4 := m4.Insert(
+		"PRICE", 1,
+		m4.Changes(RawChanges{
+			"name": "test",
+		}),
+		"Price", 2,
+	)()
+	t.String(x4.String(), x0)
+	x5 := m4.Insert(
+		"Name", "foobar",
+		"Price", 2, 3, 4,
+		"Price", 10,
+	)()
+	t.String(x5.String(), x0)
+	t.String(fmt.Sprint(x5.values), "[foobar 10]")
+	x6 := m4.Insert(
+		m4.FieldChanges(RawChanges{"Name": "foobar"}),
+		m4.FieldChanges(RawChanges{"Price": 10}),
+	)()
+	t.String(x6.String(), x5.String())
+	t.String(fmt.Sprint(x6.values), fmt.Sprint(x5.values))
+	x7 := m4.Update(
+		"Price", 1,
+	)()
+	t.String(x7.String(), "UPDATE products SET price = $1")
+	var pp product
+	m4.MustAssign(
+		&pp,
+		"Price", 100,
+	)
+	t.Int(pp.Price, 100)
 }
 
 func (t *test) String(got, expected string) {

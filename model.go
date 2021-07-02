@@ -391,7 +391,7 @@ func (m ModelWithPermittedFields) filterPermits(in RawChanges, out *Changes) {
 	}
 }
 
-// Convert RawChanges to Changes.
+// Convert RawChanges to Changes. Keys are JSON key names. See FieldChanges().
 //  m := psql.NewModel(struct {
 //  	Age *int `json:"age"`
 //  }{})
@@ -405,6 +405,18 @@ func (m Model) Changes(in RawChanges) (out Changes) {
 			continue
 		}
 		out[field] = in[field.JsonName]
+	}
+	return
+}
+
+// Convert RawChanges to Changes. Keys are field names. See Changes().
+func (m Model) FieldChanges(in RawChanges) (out Changes) {
+	out = Changes{}
+	for _, field := range m.modelFields {
+		if _, ok := in[field.Name]; !ok {
+			continue
+		}
+		out[field] = in[field.Name]
 	}
 	return
 }
@@ -504,7 +516,7 @@ func (m Model) Exists(values ...interface{}) (exists bool, err error) {
 }
 
 // MustAssign is like Assign but panics if assign operation fails.
-func (m Model) MustAssign(i interface{}, lotsOfChanges ...Changes) []Changes {
+func (m Model) MustAssign(i interface{}, lotsOfChanges ...interface{}) []interface{} {
 	out, err := m.Assign(i, lotsOfChanges...)
 	if err != nil {
 		panic(err)
@@ -527,14 +539,14 @@ func (m Model) MustAssign(i interface{}, lotsOfChanges ...Changes) []Changes {
 //  	m.Insert(changes...)("RETURNING id").MustQueryRow(&id)
 //  	// ...
 //  }
-func (m Model) Assign(target interface{}, lotsOfChanges ...Changes) (out []Changes, err error) {
+func (m Model) Assign(target interface{}, lotsOfChanges ...interface{}) (out []interface{}, err error) {
 	rt := reflect.TypeOf(target)
 	if rt.Kind() != reflect.Ptr {
 		err = ErrMustBePointer
 		return
 	}
 	rv := reflect.ValueOf(target).Elem()
-	for _, changes := range lotsOfChanges {
+	for _, changes := range m.getChanges(lotsOfChanges) {
 		for field, value := range changes {
 			f := rv.FieldByName(field.Name)
 			var pointer interface{}
@@ -546,17 +558,24 @@ func (m Model) Assign(target interface{}, lotsOfChanges ...Changes) (out []Chang
 			b, _ := json.Marshal(value)
 			json.Unmarshal(b, pointer)
 		}
+		out = append(out, changes)
 	}
-	out = lotsOfChanges
 	return
 }
 
 // Insert builds an INSERT INTO statement with fields and values in the
 // changes, returns a function with optional string argument which you can add
 // extra clause (like ON CONFLICT or RETURNING) to the statement.
+//
 //  var id int
 //  m.Insert(changes...)("RETURNING id").MustQueryRow(&id)
-func (m Model) Insert(lotsOfChanges ...Changes) func(...string) SQLWithValues {
+//
+// Changes can be a list of field name and value pairs and can also be obtained
+// from methods like Changes(), FieldChanges(), Assign(), Bind(), Filter().
+//
+//  m.Insert("FieldA", 123, "FieldB", "other")().MustExecute()
+//
+func (m Model) Insert(lotsOfChanges ...interface{}) func(...string) SQLWithValues {
 	return func(args ...string) SQLWithValues {
 		var suffix string
 		if len(args) > 0 {
@@ -568,7 +587,7 @@ func (m Model) Insert(lotsOfChanges ...Changes) func(...string) SQLWithValues {
 		values := []interface{}{}
 		jsonbFields := map[string]Changes{}
 		i := 1
-		for _, changes := range lotsOfChanges {
+		for _, changes := range m.getChanges(lotsOfChanges) {
 			for field, value := range changes {
 				if field.Jsonb != "" {
 					if _, ok := jsonbFields[field.Jsonb]; !ok {
@@ -608,9 +627,16 @@ func (m Model) Insert(lotsOfChanges ...Changes) func(...string) SQLWithValues {
 // returns a function with optional conditions (like WHERE) to the statement as
 // the first argument. The rest arguments are for any placeholder parameters in
 // the statement.
+//
 //  var rowsAffected int
 //  m.Update(changes...)("WHERE user_id = $1", 1).MustExecute(&rowsAffected)
-func (m Model) Update(lotsOfChanges ...Changes) func(...interface{}) SQLWithValues {
+//
+// Changes can be a list of field name and value pairs and can also be obtained
+// from methods like Changes(), FieldChanges(), Assign(), Bind(), Filter().
+//
+//  m.Update("FieldA", 123, "FieldB", "other")().MustExecute()
+//
+func (m Model) Update(lotsOfChanges ...interface{}) func(...interface{}) SQLWithValues {
 	return func(args ...interface{}) SQLWithValues {
 		var where string
 		if len(args) > 0 {
@@ -625,7 +651,7 @@ func (m Model) Update(lotsOfChanges ...Changes) func(...interface{}) SQLWithValu
 		values = append(values, args...)
 		jsonbFields := map[string]Changes{}
 		i := len(args) + 1
-		for _, changes := range lotsOfChanges {
+		for _, changes := range m.getChanges(lotsOfChanges) {
 			for field, value := range changes {
 				if field.Jsonb != "" {
 					if _, ok := jsonbFields[field.Jsonb]; !ok {
@@ -688,6 +714,27 @@ func (m Model) UpdatedAt() Changes {
 	return m.Changes(RawChanges{
 		"UpdatedAt": time.Now().UTC(),
 	})
+}
+
+func (m Model) getChanges(in []interface{}) (out []Changes) {
+	var key *string = nil
+	for _, item := range in {
+		if key == nil {
+			if s, ok := item.(string); ok {
+				key = &s
+				continue
+			}
+			if i, ok := item.(Changes); ok {
+				out = append(out, i)
+			}
+		} else {
+			out = append(out, m.FieldChanges(map[string]interface{}{
+				*key: item,
+			}))
+			key = nil
+		}
+	}
+	return
 }
 
 // parseStruct collects column names, json names and jsonb names
