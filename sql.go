@@ -77,12 +77,9 @@ func (s SQLWithValues) MustQuery(target interface{}) {
 	}
 }
 
-// Query executes the SQL query and put the results into the target. If target
-// is pointer of a struct, at most one row of the query is returned. If target
-// is a pointer of a slice, all rows of the query are returned. If target is a
-// pointer of a map, first column in the SELECT list will be the key of the
-// map, and the second column is the value of the map. For use cases, see
-// Find() and Select().
+// Query executes the SQL query and put the results into the target.
+// If Target must be a pointer to a struct, a slice or a map.
+// For use cases, see Find() and Select().
 func (s SQLWithValues) Query(target interface{}) error {
 	if s.model.connection == nil {
 		return ErrNoConnection
@@ -106,19 +103,32 @@ func (s SQLWithValues) Query(target interface{}) error {
 			return err
 		}
 		defer rows.Close()
+		columns, _ := rows.Columns()
+		columnLen := len(columns)
 		rv := reflect.Indirect(reflect.ValueOf(target))
 		if rv.IsNil() {
 			rv.Set(reflect.MakeMapWithSize(rt, 0))
 		}
-		mapKeyType := rt.Key()
-		mapValueType := rt.Elem()
+		mapKeyType, mapValueType := rt.Key(), rt.Elem()
+		isSlice := mapValueType.Kind() == reflect.Slice
+		if isSlice {
+			mapValueType = mapValueType.Elem()
+		}
 		for rows.Next() {
-			newKey := reflect.New(mapKeyType).Elem()
-			newValue := reflect.New(mapValueType).Elem()
-			if err := rows.Scan(newKey.Addr().Interface(), newValue.Addr().Interface()); err != nil {
+			newMapKey := reflect.New(mapKeyType).Elem()
+			newMapVal := reflect.New(mapValueType).Elem()
+			dests := mapKeyValDests(newMapKey, newMapVal, columnLen)
+			if err := rows.Scan(dests...); err != nil {
 				return err
 			}
-			rv.SetMapIndex(newKey, newValue)
+			if isSlice {
+				slice := rv.MapIndex(newMapKey)
+				if !slice.IsValid() {
+					slice = reflect.MakeSlice(reflect.SliceOf(mapValueType), 0, 0)
+				}
+				newMapVal = reflect.Append(slice, newMapVal)
+			}
+			rv.SetMapIndex(newMapKey, newMapVal)
 		}
 		return rows.Err()
 	} else if kind != reflect.Slice {
@@ -158,13 +168,7 @@ func (s SQLWithValues) scan(rv reflect.Value, scannable db.Scannable) error {
 		if field.Jsonb != "" {
 			continue
 		}
-		f := rv.FieldByName(field.Name)
-		var pointer interface{}
-		if field.Exported {
-			pointer = f.Addr().Interface()
-		} else {
-			pointer = reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Interface()
-		}
+		pointer := field.getFieldValueAddrFromStruct(rv)
 		dests = append(dests, pointer)
 	}
 	jsonbValues := []jsonbRaw{}
@@ -176,14 +180,7 @@ func (s SQLWithValues) scan(rv reflect.Value, scannable db.Scannable) error {
 	if s.model.structType == nil || len(dests) == 0 {
 		rt := rv.Type()
 		for i := 0; i < rt.NumField(); i++ {
-			f := rv.Field(i)
-			var pointer interface{}
-			if rt.Field(i).PkgPath == "" {
-				pointer = f.Addr().Interface()
-			} else {
-				pointer = reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Interface()
-			}
-			dests = append(dests, pointer)
+			dests = append(dests, getAddrOfStructField(rt.Field(i), rv.Field(i)))
 		}
 	}
 	if err := scannable.Scan(dests...); err != nil {
@@ -198,13 +195,7 @@ func (s SQLWithValues) scan(rv reflect.Value, scannable db.Scannable) error {
 			if !ok {
 				continue
 			}
-			f := rv.FieldByName(field.Name)
-			var pointer interface{}
-			if field.Exported {
-				pointer = f.Addr().Interface()
-			} else {
-				pointer = reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Interface()
-			}
+			pointer := field.getFieldValueAddrFromStruct(rv)
 			if err := json.Unmarshal(val, pointer); err != nil {
 				return err
 			}
@@ -405,4 +396,50 @@ func returnRowsAffected(dest []interface{}) func(db.Result, error) error {
 		}
 		return nil
 	}
+}
+
+func mapKeyValDests(newMapKey, newMapVal reflect.Value, columnLen int) (dests []interface{}) {
+	kt, vt := newMapKey.Type(), newMapVal.Type()
+	keySize := 0
+	switch newMapKey.Kind() {
+	case reflect.Struct:
+		for i := 0; i < columnLen && i < kt.NumField(); i++ {
+			dests = append(dests, getAddrOfStructField(kt.Field(i), newMapKey.Field(i)))
+			keySize += 1
+		}
+	case reflect.Array:
+		for i := 0; i < columnLen && i < kt.Len(); i++ {
+			dests = append(dests, newMapKey.Index(i).Addr().Interface())
+			keySize += 1
+		}
+	default:
+		dests = append(dests, newMapKey.Addr().Interface())
+		keySize += 1
+	}
+	size := columnLen - keySize
+	switch newMapVal.Kind() {
+	case reflect.Struct:
+		for i := 0; i < size; i++ {
+			dests = append(dests, getAddrOfStructField(vt.Field(i), newMapVal.Field(i)))
+		}
+	case reflect.Slice:
+		newMapVal.Set(reflect.MakeSlice(reflect.SliceOf(vt.Elem()), size, size))
+		fallthrough
+	case reflect.Array:
+		for i := 0; i < size; i++ {
+			dests = append(dests, newMapVal.Index(i).Addr().Interface())
+		}
+	default:
+		if size > 0 {
+			dests = append(dests, newMapVal.Addr().Interface())
+		}
+	}
+	return
+}
+
+func getAddrOfStructField(field reflect.StructField, value reflect.Value) interface{} {
+	if field.PkgPath == "" {
+		return value.Addr().Interface()
+	}
+	return reflect.NewAt(value.Type(), unsafe.Pointer(value.UnsafeAddr())).Interface()
 }

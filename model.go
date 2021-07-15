@@ -447,21 +447,29 @@ func (m Model) Find(values ...interface{}) SQLWithValues {
 	return m.Select(strings.Join(fields, ", "), values...)
 }
 
-// Select is like Find but you can choose what columns to retrieve.
-//  // put results into a slice
+// Select is like Find but can choose what columns to retrieve.
+//
+// To put results into a slice of strings:
 //  var names []string
 //  psql.NewModelTable("users", conn).Select("name", "ORDER BY id ASC").MustQuery(&names)
 //
-//  // put results into a map
-//  var id2name map[int]string
-//  psql.NewModelTable("users", conn).Select("id, name", "ORDER BY id ASC").MustQuery(&id2name)
-//
-//  // put results into a slice of custom struct
+// To put results into a slice of custom struct:
 //  var users []struct {
 //  	name string
 //  	id   int
 //  }
 //  psql.NewModelTable("users", conn).Select("name, id", "ORDER BY id ASC").MustQuery(&users)
+//
+// To group results by the key:
+//  var id2name map[int]string
+//  psql.NewModelTable("users", conn).Select("id, name").MustQuery(&id2name)
+//
+// If it is one-to-many, use slice as map's value:
+//  var users map[[2]string][]struct {
+//  	id   int
+//  	name string
+//  }
+//  psql.NewModelTable("users", conn).Select("country, city, id, name").MustQuery(&users)
 func (m Model) Select(fields string, values ...interface{}) SQLWithValues {
 	var where string
 	if len(values) > 0 {
@@ -548,13 +556,7 @@ func (m Model) Assign(target interface{}, lotsOfChanges ...interface{}) (out []i
 	rv := reflect.ValueOf(target).Elem()
 	for _, changes := range m.getChanges(lotsOfChanges) {
 		for field, value := range changes {
-			f := rv.FieldByName(field.Name)
-			var pointer interface{}
-			if field.Exported {
-				pointer = f.Addr().Interface()
-			} else {
-				pointer = reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Interface()
-			}
+			pointer := field.getFieldValueAddrFromStruct(rv)
 			b, _ := json.Marshal(value)
 			json.Unmarshal(b, pointer)
 		}
@@ -860,4 +862,12 @@ func (c Changes) MarshalJSON() ([]byte, error) {
 func (c Changes) String() string {
 	j, _ := json.MarshalIndent(c, "", "  ")
 	return string(j)
+}
+
+func (f Field) getFieldValueAddrFromStruct(structValue reflect.Value) interface{} {
+	value := structValue.FieldByName(f.Name)
+	if f.Exported {
+		return value.Addr().Interface()
+	}
+	return reflect.NewAt(value.Type(), unsafe.Pointer(value.UnsafeAddr())).Interface()
 }

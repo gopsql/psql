@@ -81,9 +81,10 @@ make this benchmark chart. For more information, see
 ```go
 // type (
 // 	Post struct {
-// 		Id      int
-// 		Title   string
-// 		Picture string `jsonb:"meta"`
+// 		Id         int
+// 		CategoryId int
+// 		Title      string
+// 		Picture    string `jsonb:"meta"`
 // 	}
 // )
 m := psql.NewModel(Post{}, conn, logger.StandardLogger)
@@ -94,6 +95,7 @@ m := psql.NewModel(Post{}, conn, logger.StandardLogger)
 ```go
 // CREATE TABLE users (
 //         id SERIAL PRIMARY KEY,
+//         category_id bigint DEFAULT 0 NOT NULL,
 //         status text DEFAULT ''::text NOT NULL,
 //         meta jsonb
 // )
@@ -106,11 +108,13 @@ m.NewSQLWithValues(m.Schema()).MustExecute()
 var newPostId int
 m.Insert(
 	m.Permit("Title", "Picture").Filter(`{ "Title": "hello", "Picture": "world!" }`),
+	"CategoryId", 2,
 )("RETURNING id").MustQueryRow(&newPostId)
 // or:
 m.Insert(
 	"Title", "hello",
 	"Picture", "world!",
+	"CategoryId", 2,
 )("RETURNING id").MustQueryRow(&newPostId)
 ```
 
@@ -119,19 +123,27 @@ m.Insert(
 ```go
 var firstPost Post
 m.Find("WHERE id = $1", newPostId).MustQuery(&firstPost)
-// {1 hello world!}
+// {1 2 hello world!}
 
 var ids []int
 m.Select("id", "ORDER BY id ASC").MustQuery(&ids)
 // [1]
 
+// group results by key
 var id2title map[int]string
 m.Select("id, title").MustQuery(&id2title)
 // map[1:hello]
 
+// map's key and value can be int, string, bool, array or struct
+// if it is one-to-many, use slice as map's value
+var postsByCategoryId map[struct{ categoryId int }][]struct{ title string }
+m.Select("category_id, title").MustQuery(&postsByCategoryId)
+fmt.Println("map:", postsByCategoryId)
+// map[{2}:[{hello}]]
+
 var posts []Post
 m.Find().MustQuery(&posts)
-// [{1 hello world!}]
+// [{1 2 hello world!}]
 ```
 
 ### Update Record

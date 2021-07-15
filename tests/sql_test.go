@@ -168,6 +168,19 @@ func testCRUD(_t *testing.T, conn db.DB) {
 		t.Fatal(err)
 	}
 
+	// test Columns()
+	rows, err := o.Connection().Query("SELECT id, status FROM orders")
+	if err != nil {
+		t.Fatal(err)
+	}
+	columns, err := rows.Columns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Int("columns size", len(columns), 2)
+	t.String("columns #1", columns[0], "id")
+	t.String("columns #2", columns[1], "status")
+
 	randomBytes := make([]byte, 10)
 	if _, err := rand.Read(randomBytes); err != nil {
 		t.Fatal(err)
@@ -253,21 +266,74 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.Int("statuses length", len(statuses), 2)
 	t.String("status 0", statuses[0], "new")
 	t.String("status 1", statuses[1], "new2")
+
 	var ids []int
 	model.Select("id").MustQuery(&ids)
 	t.Int("ids length", len(ids), 2)
 	t.Int("id 0", ids[0], 1)
 	t.Int("id 1", ids[1], 2)
+
 	id2status := map[int]string{}
 	model.Select("id, status").MustQuery(&id2status)
 	t.Int("map length", len(id2status), 2)
 	t.String("map 0", id2status[1], "new")
 	t.String("map 1", id2status[2], "new2")
+
 	var status2id map[string]int
 	model.Select("status, id").MustQuery(&status2id)
 	t.Int("map length", len(status2id), 2)
 	t.Int("map 0", status2id["new"], 1)
 	t.Int("map 1", status2id["new2"], 2)
+
+	var id2struct map[int]struct {
+		id     int
+		status string
+		Name   string
+	}
+	model.Select("user_id, id, status, name").MustQuery(&id2struct)
+	t.Int("map length", len(id2struct), 2)
+	t.String("struct string", fmt.Sprintf("%+v", id2struct[1]), "{id:1 status:new Name:foobar}")
+	// map[0:{id:2 status:new2 Name:} 1:{id:1 status:new Name:foobar}]
+
+	var id2structs map[int][]struct {
+		UserId int
+		status string
+	}
+	model.Select("1, user_id, status").MustQuery(&id2structs)
+	t.Int("map length", len(id2structs), 1)
+	t.String("struct string", fmt.Sprintf("%+v", id2structs[1]), "[{UserId:1 status:new} {UserId:0 status:new2}]")
+	// map[1:[{UserId:1 status:new} {UserId:0 status:new2}]]
+
+	// map[int][]interface{}: gopg returns error pg: Scan(nil)
+	// https://github.com/go-pg/pg/blob/v10.9.0/types/scan.go#L55
+	var id2strs map[int][3]string
+	model.Select("user_id, id::text, status, name").MustQuery(&id2strs)
+	t.Int("map length", len(id2strs), 2)
+	t.String("strs string", fmt.Sprintf("%+v", id2strs[1]), "[1 new foobar]")
+	// map[0:[2 new2 ] 1:[1 new foobar]]
+
+	var array2strs map[[2]int][2]string
+	model.Select("user_id, id, status, name").MustQuery(&array2strs)
+	t.Int("map length", len(array2strs), 2)
+	t.String("array string", fmt.Sprintf("%+v", array2strs[[2]int{1, 1}]), "[new foobar]")
+	// map[[0 2]:[new2 ] [1 1]:[new foobar]]
+
+	var struct2struct map[struct {
+		uid int
+		id  int
+	}]struct {
+		status string
+		Name   string
+	}
+	model.Select("user_id, id, status, name").MustQuery(&struct2struct)
+	t.Int("map length", len(struct2struct), 2)
+	k := struct {
+		uid int
+		id  int
+	}{1, 1}
+	t.String("struct string", fmt.Sprintf("%+v", struct2struct[k]), "{status:new Name:foobar}")
+	// map[{uid:0 id:2}:{status:new2 Name:} {uid:1 id:1}:{status:new Name:foobar}]
+
 	var createdAts []time.Time
 	model.Select("created_at").MustQuery(&createdAts)
 	t.Int("created_at length", len(createdAts), 2)

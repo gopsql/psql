@@ -18,9 +18,10 @@ import (
 
 type (
 	Post struct {
-		Id      int
-		Title   string
-		Picture string `jsonb:"meta"`
+		Id         int
+		CategoryId int
+		Title      string
+		Picture    string `jsonb:"meta"`
 	}
 )
 
@@ -131,6 +132,7 @@ func ExamplePost() {
 	var newPostId int
 	i := m.Insert(
 		m.Permit("Title", "Picture").Filter(`{ "Title": "hello", "Picture": "world!" }`),
+		"CategoryId", 2,
 	)("RETURNING id")
 	fmt.Println(i)
 	i.MustQueryRow(&newPostId)
@@ -147,6 +149,10 @@ func ExamplePost() {
 	var id2title map[int]string
 	m.Select("id, title").MustQuery(&id2title)
 	fmt.Println("map:", id2title)
+
+	var postsByCategoryId map[struct{ categoryId int }][]struct{ title string }
+	m.Select("category_id, title").MustQuery(&postsByCategoryId)
+	fmt.Println("map:", postsByCategoryId)
 
 	var rowsAffected int
 	u := m.Update(
@@ -175,18 +181,20 @@ func ExamplePost() {
 	// Output:
 	// CREATE TABLE posts (
 	// 	id SERIAL PRIMARY KEY,
+	// 	category_id bigint DEFAULT 0 NOT NULL,
 	// 	title text DEFAULT ''::text NOT NULL,
 	// 	meta jsonb DEFAULT '{}'::jsonb NOT NULL
 	// );
 	//
-	// INSERT INTO posts (title, meta) VALUES ($1, $2) RETURNING id
+	// INSERT INTO posts (title, category_id, meta) VALUES ($1, $2, $3) RETURNING id
 	// id: 1
-	// post: {1 hello world!}
+	// post: {1 2 hello world!}
 	// ids: [1]
 	// map: map[1:hello]
+	// map: map[{2}:[{hello}]]
 	// UPDATE posts SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', $2) WHERE id = $1
 	// updated: 1
-	// posts: [{1 hello WORLD!}]
+	// posts: [{1 2 hello WORLD!}]
 	// exists: true
 	// count: 1
 	// DELETE FROM posts WHERE id = $1
