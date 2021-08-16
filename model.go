@@ -99,6 +99,14 @@ func (m Model) TableName() string {
 	return m.tableName
 }
 
+// Type name of the Model.
+func (m Model) TypeName() string {
+	if m.structType != nil {
+		return m.structType.Name()
+	}
+	return ""
+}
+
 // Get field by struct field name, nil will be returned if no such field.
 func (m Model) FieldByName(name string) *Field {
 	for _, f := range m.modelFields {

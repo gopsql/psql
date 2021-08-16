@@ -47,6 +47,7 @@ func TestModel(_t *testing.T) {
 	t := test{_t, 0}
 
 	m0 := NewModelSlim(admin{})
+	t.String(m0.TypeName(), "admin")
 	t.String(m0.tableName, "admins")
 	t.Int(len(m0.modelFields), 0)
 	p := m0.Permit("Id")
@@ -125,6 +126,7 @@ func TestModel(_t *testing.T) {
 		"UPDATE admins SET name = $2 WHERE id = $1")
 
 	m2 := NewModel(category{})
+	t.String(m2.TypeName(), "category")
 	t.String(m2.tableName, "categories")
 	p = m2.Permit("Names", "Picture")
 	t.Int(len(p.PermittedFields()), 2)
@@ -161,10 +163,12 @@ func TestModel(_t *testing.T) {
 	)().String(), "UPDATE categories SET created_at = $1, updated_at = $2, meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{names}', $3)")
 
 	m3 := NewModel(user{})
+	t.String(m3.TypeName(), "user")
 	t.String(m3.tableName, "users")
 	t.Int(len(m3.modelFields), 4)
 
 	m4 := NewModel(product{})
+	t.String(m4.TypeName(), "product")
 	t.String(m4.tableName, "products")
 	t.Int(len(m4.modelFields), 3)
 	x0 := "INSERT INTO products (name, price) VALUES ($1, $2)"
