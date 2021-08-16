@@ -187,6 +187,23 @@ func (m Model) DropSchema() string {
 	return "DROP TABLE IF EXISTS " + m.tableName + ";\n"
 }
 
+// Clone returns a copy of the model.
+func (m *Model) Clone() *Model {
+	return &Model{
+		connection:   m.connection,
+		logger:       m.logger,
+		structType:   m.structType,
+		tableName:    m.tableName,
+		modelFields:  m.modelFields,
+		jsonbColumns: m.jsonbColumns,
+	}
+}
+
+// Quiet returns a copy of the model without logger.
+func (m *Model) Quiet() *Model {
+	return m.Clone().SetLogger(nil)
+}
+
 // SetOptions sets database connection (see SetConnection()) and/or logger (see
 // SetLogger()).
 func (m *Model) SetOptions(options ...interface{}) *Model {
