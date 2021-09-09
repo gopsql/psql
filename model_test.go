@@ -120,7 +120,29 @@ func TestModel(_t *testing.T) {
 	t.String(m1.Delete().String(), "DELETE FROM admins")
 	t.String(m1.Delete("WHERE id = $1", 1).String(),
 		"DELETE FROM admins WHERE id = $1")
-	t.String(m1.Insert(c)().String(), "INSERT INTO admins (name) VALUES ($1)")
+	t.String(m1.Insert(c).String(), "INSERT INTO admins (name) VALUES ($1)")
+	t.String(m1.Insert(c).Returning("id").String(), "INSERT INTO admins (name) VALUES ($1) RETURNING id")
+	t.String(m1.Insert(c).Returning("id AS foobar", "name").String(), "INSERT INTO admins (name) VALUES ($1) RETURNING id AS foobar, name")
+	t.String(m1.Insert(c).OnConflict().String(), "INSERT INTO admins (name) VALUES ($1)")
+	t.String(m1.Insert(c).DoNothing().String(), "INSERT INTO admins (name) VALUES ($1)")
+	t.String(m1.Insert(c).OnConflict().DoNothing().String(), "INSERT INTO admins (name) VALUES ($1) ON CONFLICT DO NOTHING")
+	t.String(m1.Insert(c).DoNothing().OnConflict().String(), "INSERT INTO admins (name) VALUES ($1) ON CONFLICT DO NOTHING")
+	t.String(m1.Insert(c).Returning("id").OnConflict().DoNothing().String(),
+		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT DO NOTHING RETURNING id")
+	t.String(m1.Insert(c).OnConflict("name").DoNothing().String(),
+		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
+	t.String(m1.Insert(c).OnConflict("lower(name)").DoNothing().String(),
+		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (lower(name)) DO NOTHING")
+	t.String(m1.Insert(c).OnConflict("(name) WHERE TRUE").DoNothing().String(),
+		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (name) WHERE TRUE DO NOTHING")
+	t.String(m1.Insert(c).OnConflict("name", "password").DoNothing().String(),
+		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (name, password) DO NOTHING")
+	t.String(m1.Insert(c).OnConflict("name").DoUpdate("password = NULL").String(),
+		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET password = NULL")
+	t.String(m1.Insert(c).OnConflict("name").DoUpdateAll().String(),
+		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name")
+	t.String(m1.Insert(c).OnConflict("name").DoUpdateAll().DoUpdate("password = NULL").String(),
+		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name, password = NULL")
 	t.String(m1.Update(c)().String(), "UPDATE admins SET name = $1")
 	t.String(m1.Update(c)("WHERE id = $1", 1).String(),
 		"UPDATE admins SET name = $2 WHERE id = $1")
@@ -133,8 +155,8 @@ func TestModel(_t *testing.T) {
 	m2c := m2.Changes(RawChanges{
 		"Picture": "https://hello/world",
 	})
-	t.String(m2.Insert(m2c)().String(), "INSERT INTO categories (meta) VALUES ($1)")
-	t.String(m2.Insert(m2c)().values[0].(string), `{"picture":"https://hello/world"}`)
+	t.String(m2.Insert(m2c).String(), "INSERT INTO categories (meta) VALUES ($1)")
+	t.String(m2.Insert(m2c).values[0].(string), `{"picture":"https://hello/world"}`)
 	t.String(m2.Update(m2c)().String(), "UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', $1)")
 	t.String(m2.Update(m2c)().values[0].(string), `"https://hello/world"`)
 	t.String(m2.Update(m2c)("WHERE id = $1", 1).String(),
@@ -147,15 +169,15 @@ func TestModel(_t *testing.T) {
 			},
 		},
 	})
-	t.String(m2.Insert(m2c2)().String(), "INSERT INTO categories (meta) VALUES ($1)")
-	t.String(m2.Insert(m2c2)().values[0].(string), `{"names":[{"key":"en_US","value":"Category"}]}`)
+	t.String(m2.Insert(m2c2).String(), "INSERT INTO categories (meta) VALUES ($1)")
+	t.String(m2.Insert(m2c2).values[0].(string), `{"names":[{"key":"en_US","value":"Category"}]}`)
 	t.String(m2.Update(m2c2)().String(), "UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{names}', $1)")
 	t.String(m2.Update(m2c2)().values[0].(string), `[{"key":"en_US","value":"Category"}]`)
 	t.String(m2.Insert(
 		m2c2,
 		m2.CreatedAt(),
 		m2.UpdatedAt(),
-	)().String(), "INSERT INTO categories (created_at, updated_at, meta) VALUES ($1, $2, $3)")
+	).String(), "INSERT INTO categories (created_at, updated_at, meta) VALUES ($1, $2, $3)")
 	t.String(m2.Update(
 		m2c2,
 		m2.CreatedAt(),
@@ -175,14 +197,14 @@ func TestModel(_t *testing.T) {
 	x1 := m4.Insert(
 		m4.Changes(RawChanges{"name": "test"}),
 		m4.Changes(RawChanges{"PRICE": 2}),
-	)()
+	)
 	t.String(x1.String(), x0)
 	x2 := m4.Insert(
 		m4.FieldChanges(RawChanges{"Name": "test"}),
 		m4.FieldChanges(RawChanges{"Price": 2}),
-	)()
+	)
 	t.String(x2.String(), x0)
-	x3 := m4.Insert("Name", "test", "Price", 2)()
+	x3 := m4.Insert("Name", "test", "Price", 2)
 	t.String(x3.String(), x0)
 	x4 := m4.Insert(
 		"PRICE", 1,
@@ -190,19 +212,19 @@ func TestModel(_t *testing.T) {
 			"name": "test",
 		}),
 		"Price", 2,
-	)()
+	)
 	t.String(x4.String(), x0)
 	x5 := m4.Insert(
 		"Name", "foobar",
 		"Price", 2, 3, 4,
 		"Price", 10,
-	)()
+	)
 	t.String(x5.String(), x0)
 	t.String(fmt.Sprint(x5.values), "[foobar 10]")
 	x6 := m4.Insert(
 		m4.FieldChanges(RawChanges{"Name": "foobar"}),
 		m4.FieldChanges(RawChanges{"Price": 10}),
-	)()
+	)
 	t.String(x6.String(), x5.String())
 	t.String(fmt.Sprint(x6.values), fmt.Sprint(x5.values))
 	x7 := m4.Update(

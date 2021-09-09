@@ -569,7 +569,7 @@ func (m Model) MustAssign(i interface{}, lotsOfChanges ...interface{}) []interfa
 //  		panic(err)
 //  	}
 //  	var id int
-//  	m.Insert(changes...)("RETURNING id").MustQueryRow(&id)
+//  	m.Insert(changes...).Returning("id").MustQueryRow(&id)
 //  	// ...
 //  }
 func (m Model) Assign(target interface{}, lotsOfChanges ...interface{}) (out []interface{}, err error) {
@@ -591,63 +591,56 @@ func (m Model) Assign(target interface{}, lotsOfChanges ...interface{}) (out []i
 }
 
 // Insert builds an INSERT INTO statement with fields and values in the
-// changes, returns a function with optional string argument which you can add
-// extra clause (like ON CONFLICT or RETURNING) to the statement.
+// changes.
 //
 //  var id int
-//  m.Insert(changes...)("RETURNING id").MustQueryRow(&id)
+//  m.Insert(changes...).Returning("id").MustQueryRow(&id)
 //
 // Changes can be a list of field name and value pairs and can also be obtained
 // from methods like Changes(), FieldChanges(), Assign(), Bind(), Filter().
 //
-//  m.Insert("FieldA", 123, "FieldB", "other")().MustExecute()
+//  m.Insert("FieldA", 123, "FieldB", "other").MustExecute()
 //
-func (m Model) Insert(lotsOfChanges ...interface{}) func(...string) SQLWithValues {
-	return func(args ...string) SQLWithValues {
-		var suffix string
-		if len(args) > 0 {
-			suffix = args[0]
-		}
-		fields := []string{}
-		fieldsIndex := map[string]int{}
-		numbers := []string{}
-		values := []interface{}{}
-		jsonbFields := map[string]Changes{}
-		i := 1
-		for _, changes := range m.getChanges(lotsOfChanges) {
-			for field, value := range changes {
-				if field.Jsonb != "" {
-					if _, ok := jsonbFields[field.Jsonb]; !ok {
-						jsonbFields[field.Jsonb] = Changes{}
-					}
-					jsonbFields[field.Jsonb][field] = value
-					continue
+func (m Model) Insert(lotsOfChanges ...interface{}) SQLWithValues {
+	fields := []string{}
+	fieldsIndex := map[string]int{}
+	numbers := []string{}
+	values := []interface{}{}
+	jsonbFields := map[string]Changes{}
+	i := 1
+	for _, changes := range m.getChanges(lotsOfChanges) {
+		for field, value := range changes {
+			if field.Jsonb != "" {
+				if _, ok := jsonbFields[field.Jsonb]; !ok {
+					jsonbFields[field.Jsonb] = Changes{}
 				}
-				if idx, ok := fieldsIndex[field.Name]; ok { // prevent duplication
-					values[idx] = value
-					continue
-				}
-				fields = append(fields, field.ColumnName)
-				fieldsIndex[field.Name] = i - 1
-				numbers = append(numbers, fmt.Sprintf("$%d", i))
-				values = append(values, value)
-				i += 1
+				jsonbFields[field.Jsonb][field] = value
+				continue
 			}
-		}
-		for jsonbField, changes := range jsonbFields {
-			fields = append(fields, jsonbField)
+			if idx, ok := fieldsIndex[field.Name]; ok { // prevent duplication
+				values[idx] = value
+				continue
+			}
+			fields = append(fields, field.ColumnName)
+			fieldsIndex[field.Name] = i - 1
 			numbers = append(numbers, fmt.Sprintf("$%d", i))
-			out := map[string]interface{}{}
-			for field, value := range changes {
-				out[field.ColumnName] = value
-			}
-			j, _ := json.Marshal(out)
-			values = append(values, string(j))
+			values = append(values, value)
 			i += 1
 		}
-		sql := "INSERT INTO " + m.tableName + " (" + strings.Join(fields, ", ") + ") VALUES (" + strings.Join(numbers, ", ") + ") " + suffix
-		return m.NewSQLWithValues(sql, values...)
 	}
+	for jsonbField, changes := range jsonbFields {
+		fields = append(fields, jsonbField)
+		numbers = append(numbers, fmt.Sprintf("$%d", i))
+		out := map[string]interface{}{}
+		for field, value := range changes {
+			out[field.ColumnName] = value
+		}
+		j, _ := json.Marshal(out)
+		values = append(values, string(j))
+		i += 1
+	}
+	sql := "INSERT INTO " + m.tableName + " (" + strings.Join(fields, ", ") + ") VALUES (" + strings.Join(numbers, ", ") + ")"
+	return m.NewSQLWithValues(sql, values...).WithFields(fields...)
 }
 
 // Update builds an UPDATE statement with fields and values in the changes,

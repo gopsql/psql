@@ -36,6 +36,12 @@ type (
 		model  *Model
 		sql    string
 		values []interface{}
+
+		fields []string
+
+		outputExpression string
+		conflictTargets  []string
+		conflictActions  []string
 	}
 
 	jsonbRaw map[string]json.RawMessage
@@ -66,8 +72,71 @@ func (m Model) NewSQLWithValues(sql string, values ...interface{}) SQLWithValues
 	}
 }
 
+// Changes fields used in DoUpdateAll().
+func (s SQLWithValues) WithFields(fields ...string) SQLWithValues {
+	s.fields = fields
+	return s
+}
+
+// Adds RETURNING clause to INSERT INTO statement.
+func (s SQLWithValues) Returning(expressions ...string) SQLWithValues {
+	s.outputExpression = strings.Join(expressions, ", ")
+	return s
+}
+
+// Used with DoNothing(), DoUpdate() or DoUpdateAll().
+func (s SQLWithValues) OnConflict(targets ...string) SQLWithValues {
+	s.conflictTargets = append([]string{}, targets...)
+	return s
+}
+
+// Used with OnConflict(), adds ON CONFLICT DO NOTHING clause to INSERT INTO
+// statement.
+func (s SQLWithValues) DoNothing() SQLWithValues {
+	s.conflictActions = []string{}
+	return s
+}
+
+// Used with OnConflict(), adds custom expressions ON CONFLICT ... DO UPDATE
+// SET ... clause to INSERT INTO statement.
+func (s SQLWithValues) DoUpdate(expressions ...string) SQLWithValues {
+	for _, expr := range expressions {
+		s.conflictActions = append(s.conflictActions, expr)
+	}
+	return s
+}
+
+// DoUpdateAll is like DoUpdate but update every field.
+func (s SQLWithValues) DoUpdateAll() SQLWithValues {
+	for _, field := range s.fields {
+		s.conflictActions = append(s.conflictActions, field+" = EXCLUDED."+field)
+	}
+	return s
+}
+
 func (s SQLWithValues) String() string {
-	return s.sql
+	sql := s.sql
+	if s.conflictTargets != nil && s.conflictActions != nil {
+		action := strings.Join(s.conflictActions, ", ")
+		if action == "" {
+			action = "DO NOTHING"
+		} else {
+			action = "DO UPDATE SET " + action
+		}
+		target := strings.Join(s.conflictTargets, ", ")
+		if target != "" && !strings.HasPrefix(target, "(") {
+			target = "(" + target + ")"
+		}
+		if target == "" {
+			sql += " ON CONFLICT " + action
+		} else {
+			sql += " ON CONFLICT " + target + " " + action
+		}
+	}
+	if s.outputExpression != "" {
+		sql += " RETURNING " + s.outputExpression
+	}
+	return sql
 }
 
 // MustQuery is like Query but panics if query operation fails.
@@ -94,11 +163,11 @@ func (s SQLWithValues) Query(target interface{}) error {
 	kind := rt.Kind()
 	if kind == reflect.Struct { // if target is not a slice, use QueryRow instead
 		rv := reflect.Indirect(reflect.ValueOf(target))
-		s.log(s.sql, s.values)
-		return s.scan(rv, s.model.connection.QueryRow(s.sql, s.values...))
+		s.log(s.String(), s.values)
+		return s.scan(rv, s.model.connection.QueryRow(s.String(), s.values...))
 	} else if kind == reflect.Map {
-		s.log(s.sql, s.values)
-		rows, err := s.model.connection.Query(s.sql, s.values...)
+		s.log(s.String(), s.values)
+		rows, err := s.model.connection.Query(s.String(), s.values...)
 		if err != nil {
 			return err
 		}
@@ -136,8 +205,8 @@ func (s SQLWithValues) Query(target interface{}) error {
 	}
 
 	rt = rt.Elem()
-	s.log(s.sql, s.values)
-	rows, err := s.model.connection.Query(s.sql, s.values...)
+	s.log(s.String(), s.values)
+	rows, err := s.model.connection.Query(s.String(), s.values...)
 	if err != nil {
 		return err
 	}
@@ -274,8 +343,8 @@ func (s SQLWithValues) ExecTx(tx db.Tx, ctx context.Context, dest ...interface{}
 		err = ErrNoConnection
 		return
 	}
-	s.log(s.sql, s.values)
-	err = returnRowsAffected(dest)(tx.ExecContext(ctx, s.sql, s.values...))
+	s.log(s.String(), s.values)
+	err = returnRowsAffected(dest)(tx.ExecContext(ctx, s.String(), s.values...))
 	return
 }
 
@@ -285,8 +354,8 @@ func (s SQLWithValues) QueryTx(tx db.Tx, ctx context.Context, dest ...interface{
 		err = ErrNoConnection
 		return
 	}
-	s.log(s.sql, s.values)
-	rows, err = tx.QueryContext(ctx, s.sql, s.values...)
+	s.log(s.String(), s.values)
+	rows, err = tx.QueryContext(ctx, s.String(), s.values...)
 	return
 }
 
@@ -296,12 +365,12 @@ func (s SQLWithValues) execute(action int, txOpts *TxOptions, dest ...interface{
 		return
 	}
 	if txOpts == nil || (txOpts.Before == nil && txOpts.After == nil) {
-		s.log(s.sql, s.values)
+		s.log(s.String(), s.values)
 		if action == actionQueryRow {
-			err = s.model.connection.QueryRow(s.sql, s.values...).Scan(dest...)
+			err = s.model.connection.QueryRow(s.String(), s.values...).Scan(dest...)
 			return
 		}
-		err = returnRowsAffected(dest)(s.model.connection.Exec(s.sql, s.values...))
+		err = returnRowsAffected(dest)(s.model.connection.Exec(s.String(), s.values...))
 		return
 	}
 	ctx := context.Background()
@@ -330,11 +399,11 @@ func (s SQLWithValues) execute(action int, txOpts *TxOptions, dest ...interface{
 			return
 		}
 	}
-	s.log(s.sql, s.values)
+	s.log(s.String(), s.values)
 	if action == actionQueryRow {
-		err = tx.QueryRowContext(ctx, s.sql, s.values...).Scan(dest...)
+		err = tx.QueryRowContext(ctx, s.String(), s.values...).Scan(dest...)
 	} else {
-		err = returnRowsAffected(dest)(tx.ExecContext(ctx, s.sql, s.values...))
+		err = returnRowsAffected(dest)(tx.ExecContext(ctx, s.String(), s.values...))
 	}
 	if err != nil {
 		return

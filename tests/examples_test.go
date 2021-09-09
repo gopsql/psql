@@ -133,7 +133,7 @@ func ExamplePost() {
 	i := m.Insert(
 		m.Permit("Title", "Picture").Filter(`{ "Title": "hello", "Picture": "world!" }`),
 		"CategoryId", 2,
-	)("RETURNING id")
+	).Returning("id")
 	fmt.Println(i)
 	i.MustQueryRow(&newPostId)
 	fmt.Println("id:", newPostId)

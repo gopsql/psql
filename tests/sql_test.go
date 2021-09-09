@@ -228,7 +228,7 @@ func testCRUD(_t *testing.T, conn db.DB) {
 		}),
 		model.CreatedAt(),
 		model.UpdatedAt(),
-	)("RETURNING id").QueryRow(&id)
+	).Returning("id").QueryRow(&id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func testCRUD(_t *testing.T, conn db.DB) {
 		model.Changes(psql.RawChanges{
 			"Status": "new2",
 		}),
-	)("RETURNING id").QueryRow(&id)
+	).Returning("id").QueryRow(&id)
 	if err != nil {
 		t.Fatal(err)
 	}
