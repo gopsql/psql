@@ -136,8 +136,8 @@ func TestModel(_t *testing.T) {
 		Where("orders.name = $1", "foobar").Returning("admins.id").String(),
 		"DELETE FROM admins USING users, orders WHERE (admins.user_id = users.id) "+
 			"AND (admins.order_id = orders.id) AND (orders.name = $1) RETURNING admins.id")
-	t.String(m1.Delete().Where("id = $1", 1).String(),
-		"DELETE FROM admins WHERE id = $1")
+	t.String(m1.Where("id = $1", 1).Delete().String(), "DELETE FROM admins WHERE id = $1")
+	t.String(m1.Delete().Where("id = $1", 1).String(), "DELETE FROM admins WHERE id = $1")
 	t.String(m1.Delete().Where("id = $1", 1).Where("name = $2", "foobar").String(),
 		"DELETE FROM admins WHERE (id = $1) AND (name = $2)")
 	t.String(m1.Insert(c).String(), "INSERT INTO admins (name) VALUES ($1)")
@@ -165,6 +165,8 @@ func TestModel(_t *testing.T) {
 		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name, password = NULL")
 	t.String(m1.Update(c).String(), "UPDATE admins SET name = $1")
 	t.String(m1.Update(c).Returning("id").String(), "UPDATE admins SET name = $1 RETURNING id")
+	t.String(m1.Where("id = $1", 1).Update(c).String(),
+		"UPDATE admins SET name = $2 WHERE id = $1")
 	t.String(m1.Update(c).Where("id = $1", 1).String(),
 		"UPDATE admins SET name = $2 WHERE id = $1")
 	t.String(m1.Update(c).Where("name = $1", "foo").Where("id = $2", 1).String(),

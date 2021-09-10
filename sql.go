@@ -181,6 +181,22 @@ func (s *SelectSQL) Find() *SelectSQL {
 	return s.ResetSelect(fields...)
 }
 
+// Create a UPDATE statement from Where().
+func (s *SelectSQL) Update(lotsOfChanges ...interface{}) *UpdateSQL {
+	n := s.model.Update(lotsOfChanges...)
+	n.conditions = s.conditions
+	n.args = s.args
+	return n.Reload()
+}
+
+// Create a DELETE statement from Where().
+func (s *SelectSQL) Delete() *DeleteSQL {
+	n := s.model.Delete()
+	n.conditions = s.conditions
+	n.args = s.args
+	return n.Reload()
+}
+
 // MustExists is like Exists but panics if existence check operation fails.
 // Returns true if record exists, false if not exists.
 func (s *SelectSQL) MustExists() bool {

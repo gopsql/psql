@@ -123,6 +123,7 @@ m.Insert(
 ```go
 var firstPost Post
 m.Find().Where("id = $1", newPostId).MustQuery(&firstPost)
+// or: m.Where("id = $1", newPostId).Find().MustQuery(&firstPost)
 // {1 2 hello world!}
 
 var ids []int
@@ -153,6 +154,7 @@ var rowsAffected int
 m.Update(
 	m.Permit("Picture").Filter(`{ "Picture": "WORLD!" }`),
 ).Where("id = $1", newPostId).MustExecute(&rowsAffected)
+// or: m.Where(...).Update(...).MustExecute(...)
 ```
 
 ### Delete Record
@@ -160,6 +162,7 @@ m.Update(
 ```go
 var rowsDeleted int
 m.Delete().Where("id = $1", newPostId).MustExecute(&rowsDeleted)
+// or: m.Where(...).Delete().MustExecute(...)
 ```
 
 ### Other
