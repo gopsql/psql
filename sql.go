@@ -31,14 +31,20 @@ type (
 		Before, After  func(context.Context, db.Tx) error
 	}
 
-	// SQL can be created with Model.NewSQL(sql, values...)
+	// SQL can be created with Model.NewSQL()
 	SQL struct {
+		main interface {
+			String() string
+		}
 		model  *Model
 		sql    string
 		values []interface{}
+	}
 
-		fields []string
-
+	// InsertSQL can be created with Model.NewSQL().AsInsert()
+	InsertSQL struct {
+		*SQL
+		fields           []string
 		outputExpression string
 		conflictTargets  []string
 		conflictActions  []string
@@ -60,46 +66,50 @@ func (j *jsonbRaw) Scan(src interface{}) error { // necessary for github.com/lib
 
 // Create new SQL with SQL statement as first argument, The rest
 // arguments are for any placeholder parameters in the statement.
-func (m Model) NewSQL(sql string, values ...interface{}) SQL {
+func (m Model) NewSQL(sql string, values ...interface{}) *SQL {
 	sql = strings.TrimSpace(sql)
 	if c, ok := m.connection.(db.ConvertParameters); ok {
 		sql, values = c.ConvertParameters(sql, values)
 	}
-	return SQL{
+	return &SQL{
 		model:  &m,
 		sql:    sql,
 		values: values,
 	}
 }
 
-// Changes fields used in DoUpdateAll().
-func (s SQL) WithFields(fields ...string) SQL {
-	s.fields = fields
-	return s
+// Convert SQL to InsertSQL. The optional fields will be used in DoUpdateAll().
+func (s SQL) AsInsert(fields ...string) *InsertSQL {
+	i := &InsertSQL{
+		SQL:    &s,
+		fields: fields,
+	}
+	i.SQL.main = i
+	return i
 }
 
 // Adds RETURNING clause to INSERT INTO statement.
-func (s SQL) Returning(expressions ...string) SQL {
+func (s *InsertSQL) Returning(expressions ...string) *InsertSQL {
 	s.outputExpression = strings.Join(expressions, ", ")
 	return s
 }
 
 // Used with DoNothing(), DoUpdate() or DoUpdateAll().
-func (s SQL) OnConflict(targets ...string) SQL {
+func (s *InsertSQL) OnConflict(targets ...string) *InsertSQL {
 	s.conflictTargets = append([]string{}, targets...)
 	return s
 }
 
 // Used with OnConflict(), adds ON CONFLICT DO NOTHING clause to INSERT INTO
 // statement.
-func (s SQL) DoNothing() SQL {
+func (s *InsertSQL) DoNothing() *InsertSQL {
 	s.conflictActions = []string{}
 	return s
 }
 
 // Used with OnConflict(), adds custom expressions ON CONFLICT ... DO UPDATE
 // SET ... clause to INSERT INTO statement.
-func (s SQL) DoUpdate(expressions ...string) SQL {
+func (s *InsertSQL) DoUpdate(expressions ...string) *InsertSQL {
 	for _, expr := range expressions {
 		s.conflictActions = append(s.conflictActions, expr)
 	}
@@ -107,14 +117,14 @@ func (s SQL) DoUpdate(expressions ...string) SQL {
 }
 
 // DoUpdateAll is like DoUpdate but update every field.
-func (s SQL) DoUpdateAll() SQL {
+func (s *InsertSQL) DoUpdateAll() *InsertSQL {
 	for _, field := range s.fields {
 		s.conflictActions = append(s.conflictActions, field+" = EXCLUDED."+field)
 	}
 	return s
 }
 
-func (s SQL) String() string {
+func (s InsertSQL) String() string {
 	sql := s.sql
 	if s.conflictTargets != nil && s.conflictActions != nil {
 		action := strings.Join(s.conflictActions, ", ")
@@ -137,6 +147,13 @@ func (s SQL) String() string {
 		sql += " RETURNING " + s.outputExpression
 	}
 	return sql
+}
+
+func (s SQL) String() string {
+	if s.main != nil {
+		return s.main.String()
+	}
+	return s.sql
 }
 
 // MustQuery is like Query but panics if query operation fails.

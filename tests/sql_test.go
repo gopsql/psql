@@ -125,6 +125,17 @@ func init() {
 	}
 }
 
+func TestNewSQL(_t *testing.T) {
+	m := psql.NewModel(order{})
+	sql := "INSERT INTO orders (status) VALUES ($1)"
+	s1 := m.NewSQL(sql, "new")
+	t := test{_t}
+	t.String("sql #1", s1.String(), sql)
+	s2 := s1.AsInsert()
+	t.String("sql #2", s2.OnConflict().DoNothing().String(), sql+" ON CONFLICT DO NOTHING")
+	t.String("sql #3", s1.String(), sql)
+}
+
 func TestCRUDInPQ(t *testing.T) {
 	conn, err := pq.Open(connStr)
 	if err != nil {

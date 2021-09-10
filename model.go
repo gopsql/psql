@@ -458,7 +458,7 @@ func (m Model) FieldChanges(in RawChanges) (out Changes) {
 //  // put results into a struct
 //  var user models.User
 //  psql.NewModel(models.User{}, conn).Find("WHERE id = $1", 1).MustQuery(&user)
-func (m Model) Find(values ...interface{}) SQL {
+func (m Model) Find(values ...interface{}) *SQL {
 	fields := []string{}
 	for _, field := range m.modelFields {
 		if field.Jsonb != "" {
@@ -495,7 +495,7 @@ func (m Model) Find(values ...interface{}) SQL {
 //  	name string
 //  }
 //  psql.NewModelTable("users", conn).Select("country, city, id, name").MustQuery(&users)
-func (m Model) Select(fields string, values ...interface{}) SQL {
+func (m Model) Select(fields string, values ...interface{}) *SQL {
 	var where string
 	if len(values) > 0 {
 		if w, ok := values[0].(string); ok {
@@ -601,7 +601,7 @@ func (m Model) Assign(target interface{}, lotsOfChanges ...interface{}) (out []i
 //
 //  m.Insert("FieldA", 123, "FieldB", "other").MustExecute()
 //
-func (m Model) Insert(lotsOfChanges ...interface{}) SQL {
+func (m Model) Insert(lotsOfChanges ...interface{}) *InsertSQL {
 	fields := []string{}
 	fieldsIndex := map[string]int{}
 	numbers := []string{}
@@ -640,7 +640,7 @@ func (m Model) Insert(lotsOfChanges ...interface{}) SQL {
 		i += 1
 	}
 	sql := "INSERT INTO " + m.tableName + " (" + strings.Join(fields, ", ") + ") VALUES (" + strings.Join(numbers, ", ") + ")"
-	return m.NewSQL(sql, values...).WithFields(fields...)
+	return m.NewSQL(sql, values...).AsInsert(fields...)
 }
 
 // Update builds an UPDATE statement with fields and values in the changes,
@@ -656,8 +656,8 @@ func (m Model) Insert(lotsOfChanges ...interface{}) SQL {
 //
 //  m.Update("FieldA", 123, "FieldB", "other")().MustExecute()
 //
-func (m Model) Update(lotsOfChanges ...interface{}) func(...interface{}) SQL {
-	return func(args ...interface{}) SQL {
+func (m Model) Update(lotsOfChanges ...interface{}) func(...interface{}) *SQL {
+	return func(args ...interface{}) *SQL {
 		var where string
 		if len(args) > 0 {
 			if w, ok := args[0].(string); ok {
@@ -710,7 +710,7 @@ func (m Model) Update(lotsOfChanges ...interface{}) func(...interface{}) SQL {
 // for any placeholder parameters in the statement.
 //  var ids []int
 //  psql.NewModelTable("reports", conn).Delete("RETURNING id").MustQuery(&ids)
-func (m Model) Delete(values ...interface{}) SQL {
+func (m Model) Delete(values ...interface{}) *SQL {
 	var where string
 	if len(values) > 0 {
 		if w, ok := values[0].(string); ok {
