@@ -36,7 +36,7 @@ func ExamplePQ() {
 		panic(err)
 	}
 	var name string
-	psql.NewModelTable("", conn).NewSQLWithValues("SELECT current_database()").MustQueryRow(&name)
+	psql.NewModelTable("", conn).NewSQL("SELECT current_database()").MustQueryRow(&name)
 	fmt.Println(name)
 	// Output:
 	// gopsqltests
@@ -51,16 +51,16 @@ func ExampleGOPG() {
 	var output2 []int
 
 	m := psql.NewModelTable("", conn, logger.StandardLogger)
-	m.NewSQLWithValues("SELECT current_database()").MustQueryRowInTransaction(&psql.TxOptions{
+	m.NewSQL("SELECT current_database()").MustQueryRowInTransaction(&psql.TxOptions{
 		Before: func(ctx context.Context, tx db.Tx) (err error) {
 			// just like tx.ExecContext(ctx, ...)
-			err = m.NewSQLWithValues("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE").ExecTx(tx, ctx)
+			err = m.NewSQL("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE").ExecTx(tx, ctx)
 			if err != nil {
 				return
 			}
 			var rows db.Rows
 			// just like tx.QueryContext(ctx, ...)
-			rows, err = m.NewSQLWithValues("SELECT s.a, chr(s.a) FROM generate_series(65,70) AS s(a)").QueryTx(tx, ctx)
+			rows, err = m.NewSQL("SELECT s.a, chr(s.a) FROM generate_series(65,70) AS s(a)").QueryTx(tx, ctx)
 			if err != nil {
 				return err
 			}
@@ -78,7 +78,7 @@ func ExampleGOPG() {
 		},
 		After: func(ctx context.Context, tx db.Tx) error {
 			// just like tx.QueryContext(ctx, ...)
-			rows, err := m.NewSQLWithValues("SELECT * FROM generate_series(11, 15)").QueryTx(tx, ctx)
+			rows, err := m.NewSQL("SELECT * FROM generate_series(11, 15)").QueryTx(tx, ctx)
 			if err != nil {
 				return err
 			}
@@ -98,7 +98,7 @@ func ExampleGOPG() {
 	fmt.Println("output2:", output2)
 
 	var outpu3 map[int]string
-	m.NewSQLWithValues("SELECT s.a, chr(s.a) FROM generate_series(71,75) AS s(a)").MustQuery(&outpu3)
+	m.NewSQL("SELECT s.a, chr(s.a) FROM generate_series(71,75) AS s(a)").MustQuery(&outpu3)
 	fmt.Println("output3:", outpu3)
 
 	// Output:
@@ -122,11 +122,11 @@ func ExamplePost() {
 	m := psql.NewModel(Post{}, conn, logger.StandardLogger)
 
 	fmt.Println(m.Schema())
-	m.NewSQLWithValues(m.Schema()).MustExecute()
+	m.NewSQL(m.Schema()).MustExecute()
 
 	defer func() {
 		fmt.Println(m.DropSchema())
-		m.NewSQLWithValues(m.DropSchema()).MustExecute()
+		m.NewSQL(m.DropSchema()).MustExecute()
 	}()
 
 	var newPostId int

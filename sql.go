@@ -31,8 +31,8 @@ type (
 		Before, After  func(context.Context, db.Tx) error
 	}
 
-	// SQLWithValues can be created with Model.NewSQLWithValues(sql, values...)
-	SQLWithValues struct {
+	// SQL can be created with Model.NewSQL(sql, values...)
+	SQL struct {
 		model  *Model
 		sql    string
 		values []interface{}
@@ -58,14 +58,14 @@ func (j *jsonbRaw) Scan(src interface{}) error { // necessary for github.com/lib
 	return json.Unmarshal(source, j)
 }
 
-// Create new SQLWithValues with SQL statement as first argument, The rest
+// Create new SQL with SQL statement as first argument, The rest
 // arguments are for any placeholder parameters in the statement.
-func (m Model) NewSQLWithValues(sql string, values ...interface{}) SQLWithValues {
+func (m Model) NewSQL(sql string, values ...interface{}) SQL {
 	sql = strings.TrimSpace(sql)
 	if c, ok := m.connection.(db.ConvertParameters); ok {
 		sql, values = c.ConvertParameters(sql, values)
 	}
-	return SQLWithValues{
+	return SQL{
 		model:  &m,
 		sql:    sql,
 		values: values,
@@ -73,33 +73,33 @@ func (m Model) NewSQLWithValues(sql string, values ...interface{}) SQLWithValues
 }
 
 // Changes fields used in DoUpdateAll().
-func (s SQLWithValues) WithFields(fields ...string) SQLWithValues {
+func (s SQL) WithFields(fields ...string) SQL {
 	s.fields = fields
 	return s
 }
 
 // Adds RETURNING clause to INSERT INTO statement.
-func (s SQLWithValues) Returning(expressions ...string) SQLWithValues {
+func (s SQL) Returning(expressions ...string) SQL {
 	s.outputExpression = strings.Join(expressions, ", ")
 	return s
 }
 
 // Used with DoNothing(), DoUpdate() or DoUpdateAll().
-func (s SQLWithValues) OnConflict(targets ...string) SQLWithValues {
+func (s SQL) OnConflict(targets ...string) SQL {
 	s.conflictTargets = append([]string{}, targets...)
 	return s
 }
 
 // Used with OnConflict(), adds ON CONFLICT DO NOTHING clause to INSERT INTO
 // statement.
-func (s SQLWithValues) DoNothing() SQLWithValues {
+func (s SQL) DoNothing() SQL {
 	s.conflictActions = []string{}
 	return s
 }
 
 // Used with OnConflict(), adds custom expressions ON CONFLICT ... DO UPDATE
 // SET ... clause to INSERT INTO statement.
-func (s SQLWithValues) DoUpdate(expressions ...string) SQLWithValues {
+func (s SQL) DoUpdate(expressions ...string) SQL {
 	for _, expr := range expressions {
 		s.conflictActions = append(s.conflictActions, expr)
 	}
@@ -107,14 +107,14 @@ func (s SQLWithValues) DoUpdate(expressions ...string) SQLWithValues {
 }
 
 // DoUpdateAll is like DoUpdate but update every field.
-func (s SQLWithValues) DoUpdateAll() SQLWithValues {
+func (s SQL) DoUpdateAll() SQL {
 	for _, field := range s.fields {
 		s.conflictActions = append(s.conflictActions, field+" = EXCLUDED."+field)
 	}
 	return s
 }
 
-func (s SQLWithValues) String() string {
+func (s SQL) String() string {
 	sql := s.sql
 	if s.conflictTargets != nil && s.conflictActions != nil {
 		action := strings.Join(s.conflictActions, ", ")
@@ -140,7 +140,7 @@ func (s SQLWithValues) String() string {
 }
 
 // MustQuery is like Query but panics if query operation fails.
-func (s SQLWithValues) MustQuery(target interface{}) {
+func (s SQL) MustQuery(target interface{}) {
 	if err := s.Query(target); err != nil {
 		panic(err)
 	}
@@ -149,7 +149,7 @@ func (s SQLWithValues) MustQuery(target interface{}) {
 // Query executes the SQL query and put the results into the target.
 // If Target must be a pointer to a struct, a slice or a map.
 // For use cases, see Find() and Select().
-func (s SQLWithValues) Query(target interface{}) error {
+func (s SQL) Query(target interface{}) error {
 	if s.model.connection == nil {
 		return ErrNoConnection
 	}
@@ -223,7 +223,7 @@ func (s SQLWithValues) Query(target interface{}) error {
 }
 
 // scan a scannable (Row or Rows) into every field of a struct
-func (s SQLWithValues) scan(rv reflect.Value, scannable db.Scannable) error {
+func (s SQL) scan(rv reflect.Value, scannable db.Scannable) error {
 	if rv.Kind() != reflect.Struct || (s.model.structType != nil && rv.Type() != s.model.structType) {
 		return scannable.Scan(rv.Addr().Interface())
 	}
@@ -274,7 +274,7 @@ func (s SQLWithValues) scan(rv reflect.Value, scannable db.Scannable) error {
 }
 
 // MustQueryRow is like QueryRow but panics if query row operation fails.
-func (s SQLWithValues) MustQueryRow(dest ...interface{}) {
+func (s SQL) MustQueryRow(dest ...interface{}) {
 	if err := s.QueryRow(dest...); err != nil {
 		panic(err)
 	}
@@ -287,13 +287,13 @@ func (s SQLWithValues) MustQueryRow(dest ...interface{}) {
 //  	id   int
 //  }
 //  psql.NewModelTable("users", conn).Select("name, id").MustQueryRow(&u.name, &u.id)
-func (s SQLWithValues) QueryRow(dest ...interface{}) error {
+func (s SQL) QueryRow(dest ...interface{}) error {
 	return s.QueryRowInTransaction(nil, dest...)
 }
 
 // MustQueryRowInTransaction is like QueryRowInTransaction but panics if query
 // row operation fails.
-func (s SQLWithValues) MustQueryRowInTransaction(txOpts *TxOptions, dest ...interface{}) {
+func (s SQL) MustQueryRowInTransaction(txOpts *TxOptions, dest ...interface{}) {
 	if err := s.QueryRowInTransaction(txOpts, dest...); err != nil {
 		panic(err)
 	}
@@ -302,12 +302,12 @@ func (s SQLWithValues) MustQueryRowInTransaction(txOpts *TxOptions, dest ...inte
 // QueryRowInTransaction is like QueryRow but executes the statement in a
 // transaction, you can define IsolationLevel and statements Before and/or
 // After it.
-func (s SQLWithValues) QueryRowInTransaction(txOpts *TxOptions, dest ...interface{}) error {
+func (s SQL) QueryRowInTransaction(txOpts *TxOptions, dest ...interface{}) error {
 	return s.execute(actionQueryRow, txOpts, dest...)
 }
 
 // MustExecute is like Execute but panics if execute operation fails.
-func (s SQLWithValues) MustExecute(dest ...interface{}) {
+func (s SQL) MustExecute(dest ...interface{}) {
 	if err := s.Execute(dest...); err != nil {
 		panic(err)
 	}
@@ -316,13 +316,13 @@ func (s SQLWithValues) MustExecute(dest ...interface{}) {
 // Execute executes a query without returning any rows by an UPDATE, INSERT, or
 // DELETE. You can get number of rows affected by providing pointer of int or
 // int64 to the optional dest. For use cases, see Update().
-func (s SQLWithValues) Execute(dest ...interface{}) error {
+func (s SQL) Execute(dest ...interface{}) error {
 	return s.ExecuteInTransaction(nil, dest...)
 }
 
 // MustExecuteInTransaction is like ExecuteInTransaction but panics if execute
 // operation fails.
-func (s SQLWithValues) MustExecuteInTransaction(txOpts *TxOptions, dest ...interface{}) {
+func (s SQL) MustExecuteInTransaction(txOpts *TxOptions, dest ...interface{}) {
 	if err := s.ExecuteInTransaction(txOpts, dest...); err != nil {
 		panic(err)
 	}
@@ -331,14 +331,14 @@ func (s SQLWithValues) MustExecuteInTransaction(txOpts *TxOptions, dest ...inter
 // ExecuteInTransaction is like Execute but executes the statement in a
 // transaction, you can define IsolationLevel and statements Before and/or
 // After it.
-func (s SQLWithValues) ExecuteInTransaction(txOpts *TxOptions, dest ...interface{}) error {
+func (s SQL) ExecuteInTransaction(txOpts *TxOptions, dest ...interface{}) error {
 	return s.execute(actionExecute, txOpts, dest...)
 }
 
 // ExecTx executes a query in a transaction without returning any rows. You can
 // get number of rows affected by providing pointer of int or int64 to the
 // optional dest.
-func (s SQLWithValues) ExecTx(tx db.Tx, ctx context.Context, dest ...interface{}) (err error) {
+func (s SQL) ExecTx(tx db.Tx, ctx context.Context, dest ...interface{}) (err error) {
 	if s.model.connection == nil {
 		err = ErrNoConnection
 		return
@@ -349,7 +349,7 @@ func (s SQLWithValues) ExecTx(tx db.Tx, ctx context.Context, dest ...interface{}
 }
 
 // Query executes the SQL query and returns rows.
-func (s SQLWithValues) QueryTx(tx db.Tx, ctx context.Context, dest ...interface{}) (rows db.Rows, err error) {
+func (s SQL) QueryTx(tx db.Tx, ctx context.Context, dest ...interface{}) (rows db.Rows, err error) {
 	if s.model.connection == nil {
 		err = ErrNoConnection
 		return
@@ -359,7 +359,7 @@ func (s SQLWithValues) QueryTx(tx db.Tx, ctx context.Context, dest ...interface{
 	return
 }
 
-func (s SQLWithValues) execute(action int, txOpts *TxOptions, dest ...interface{}) (err error) {
+func (s SQL) execute(action int, txOpts *TxOptions, dest ...interface{}) (err error) {
 	if s.model.connection == nil {
 		err = ErrNoConnection
 		return
@@ -417,7 +417,7 @@ func (s SQLWithValues) execute(action int, txOpts *TxOptions, dest ...interface{
 	return
 }
 
-func (s SQLWithValues) log(sql string, args []interface{}) {
+func (s SQL) log(sql string, args []interface{}) {
 	if s.model.logger == nil {
 		return
 	}

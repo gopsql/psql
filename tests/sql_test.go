@@ -157,13 +157,13 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	o.SetLogger(logger.StandardLogger)
 
 	// drop table
-	err := o.NewSQLWithValues(o.DropSchema()).Execute()
+	err := o.NewSQL(o.DropSchema()).Execute()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// create table
-	err = o.NewSQLWithValues(o.Schema()).Execute()
+	err = o.NewSQL(o.Schema()).Execute()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,14 +436,14 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	err = model.Update(achanges...)().ExecuteInTransaction(&psql.TxOptions{
 		IsolationLevel: db.LevelSerializable,
 		Before: func(ctx context.Context, tx db.Tx) (err error) {
-			err = model.NewSQLWithValues(
+			err = model.NewSQL(
 				"UPDATE "+model.TableName()+" SET user_id = user_id - $1",
 				23,
 			).ExecTx(tx, ctx)
 			return
 		},
 		After: func(ctx context.Context, tx db.Tx) (err error) {
-			err = model.NewSQLWithValues(
+			err = model.NewSQL(
 				"UPDATE "+model.TableName()+" SET user_id = user_id + $1",
 				99,
 			).ExecTx(tx, ctx)

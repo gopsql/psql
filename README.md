@@ -99,7 +99,7 @@ m := psql.NewModel(Post{}, conn, logger.StandardLogger)
 //         status text DEFAULT ''::text NOT NULL,
 //         meta jsonb
 // )
-m.NewSQLWithValues(m.Schema()).MustExecute()
+m.NewSQL(m.Schema()).MustExecute()
 ```
 
 ### Insert Record
