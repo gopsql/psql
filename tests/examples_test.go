@@ -157,7 +157,7 @@ func ExamplePost() {
 	var rowsAffected int
 	u := m.Update(
 		m.Permit("Picture").Filter(`{ "Picture": "WORLD!" }`),
-	)("WHERE id = $1", newPostId)
+	).Where("id = $1", newPostId)
 	fmt.Println(u)
 	u.MustExecute(&rowsAffected)
 	fmt.Println("updated:", rowsAffected)

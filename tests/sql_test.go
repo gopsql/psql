@@ -444,7 +444,7 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.String("order FieldInJsonb", ao.FieldInJsonb, "red")
 	t.String("order OtherJsonb", ao.OtherJsonb, "blue")
 	var rowsAffected int
-	err = model.Update(achanges...)().ExecuteInTransaction(&psql.TxOptions{
+	err = model.Update(achanges...).ExecuteInTransaction(&psql.TxOptions{
 		IsolationLevel: db.LevelSerializable,
 		Before: func(ctx context.Context, tx db.Tx) (err error) {
 			err = model.NewSQL(

@@ -50,6 +50,15 @@ type (
 		conflictActions  []string
 	}
 
+	// UpdateSQL can be created with Model.NewSQL().AsUpdate()
+	UpdateSQL struct {
+		*SQL
+		changes          []interface{}
+		conditions       []string
+		args             []interface{}
+		outputExpression string
+	}
+
 	jsonbRaw map[string]json.RawMessage
 )
 
@@ -86,6 +95,16 @@ func (s SQL) AsInsert(fields ...string) *InsertSQL {
 	}
 	i.SQL.main = i
 	return i
+}
+
+// Convert SQL to UpdateSQL. The optional changes will be used in Reload().
+func (s SQL) AsUpdate(changes ...interface{}) *UpdateSQL {
+	u := &UpdateSQL{
+		SQL:     &s,
+		changes: changes,
+	}
+	u.SQL.main = u
+	return u
 }
 
 // Adds RETURNING clause to INSERT INTO statement.
@@ -143,6 +162,27 @@ func (s InsertSQL) String() string {
 			sql += " ON CONFLICT " + target + " " + action
 		}
 	}
+	if s.outputExpression != "" {
+		sql += " RETURNING " + s.outputExpression
+	}
+	return sql
+}
+
+// Adds RETURNING clause to Update statement.
+func (s *UpdateSQL) Returning(expressions ...string) *UpdateSQL {
+	s.outputExpression = strings.Join(expressions, ", ")
+	return s
+}
+
+// Adds condition to UPDATE statement.
+func (s *UpdateSQL) Where(condition string, args ...interface{}) *UpdateSQL {
+	s.conditions = append(s.conditions, condition)
+	s.args = append(s.args, args...)
+	return s.Reload()
+}
+
+func (s *UpdateSQL) String() string {
+	sql := s.sql
 	if s.outputExpression != "" {
 		sql += " RETURNING " + s.outputExpression
 	}

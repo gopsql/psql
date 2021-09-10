@@ -152,7 +152,7 @@ m.Find().MustQuery(&posts)
 var rowsAffected int
 m.Update(
 	m.Permit("Picture").Filter(`{ "Picture": "WORLD!" }`),
-)("WHERE id = $1", newPostId).MustExecute(&rowsAffected)
+).Where("id = $1", newPostId).MustExecute(&rowsAffected)
 ```
 
 ### Delete Record

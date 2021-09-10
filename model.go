@@ -643,66 +643,78 @@ func (m Model) Insert(lotsOfChanges ...interface{}) *InsertSQL {
 	return m.NewSQL(sql, values...).AsInsert(fields...)
 }
 
-// Update builds an UPDATE statement with fields and values in the changes,
-// returns a function with optional conditions (like WHERE) to the statement as
-// the first argument. The rest arguments are for any placeholder parameters in
-// the statement.
+// Update builds an UPDATE statement with fields and values in the changes.
 //
 //  var rowsAffected int
-//  m.Update(changes...)("WHERE user_id = $1", 1).MustExecute(&rowsAffected)
+//  m.Update(changes...).Where("user_id = $1", 1).MustExecute(&rowsAffected)
 //
 // Changes can be a list of field name and value pairs and can also be obtained
 // from methods like Changes(), FieldChanges(), Assign(), Bind(), Filter().
 //
-//  m.Update("FieldA", 123, "FieldB", "other")().MustExecute()
+//  m.Update("FieldA", 123, "FieldB", "other").MustExecute()
 //
-func (m Model) Update(lotsOfChanges ...interface{}) func(...interface{}) *SQL {
-	return func(args ...interface{}) *SQL {
-		var where string
-		if len(args) > 0 {
-			if w, ok := args[0].(string); ok {
-				where = w
-				args = args[1:]
-			}
-		}
-		fields := []string{}
-		fieldsIndex := map[string]int{}
-		values := []interface{}{}
-		values = append(values, args...)
-		jsonbFields := map[string]Changes{}
-		i := len(args) + 1
-		for _, changes := range m.getChanges(lotsOfChanges) {
-			for field, value := range changes {
-				if field.Jsonb != "" {
-					if _, ok := jsonbFields[field.Jsonb]; !ok {
-						jsonbFields[field.Jsonb] = Changes{}
-					}
-					jsonbFields[field.Jsonb][field] = value
-					continue
+func (m Model) Update(lotsOfChanges ...interface{}) *UpdateSQL {
+	return m.NewSQL("").AsUpdate(lotsOfChanges...).Reload()
+}
+
+// Update SQL and values in the UpdateSQL object due to changes of columns and
+// conditions.
+func (s *UpdateSQL) Reload() *UpdateSQL {
+	fields := []string{}
+	fieldsIndex := map[string]int{}
+	values := []interface{}{}
+	values = append(values, s.args...)
+	jsonbFields := map[string]Changes{}
+	i := len(s.args) + 1
+	for _, changes := range s.model.getChanges(s.changes) {
+		for field, value := range changes {
+			if field.Jsonb != "" {
+				if _, ok := jsonbFields[field.Jsonb]; !ok {
+					jsonbFields[field.Jsonb] = Changes{}
 				}
-				if idx, ok := fieldsIndex[field.Name]; ok { // prevent duplication
-					values[idx] = value
-					continue
-				}
-				fields = append(fields, fmt.Sprintf("%s = $%d", field.ColumnName, i))
-				fieldsIndex[field.Name] = i - 1
-				values = append(values, value)
-				i += 1
+				jsonbFields[field.Jsonb][field] = value
+				continue
 			}
-		}
-		for jsonbField, changes := range jsonbFields {
-			var field = fmt.Sprintf("COALESCE(%s, '{}'::jsonb)", jsonbField)
-			for f, value := range changes {
-				field = fmt.Sprintf("jsonb_set(%s, '{%s}', $%d)", field, f.ColumnName, i)
-				j, _ := json.Marshal(value)
-				values = append(values, string(j))
-				i += 1
+			if idx, ok := fieldsIndex[field.Name]; ok { // prevent duplication
+				values[idx] = value
+				continue
 			}
-			fields = append(fields, jsonbField+" = "+field)
+			fields = append(fields, fmt.Sprintf("%s = $%d", field.ColumnName, i))
+			fieldsIndex[field.Name] = i - 1
+			values = append(values, value)
+			i += 1
 		}
-		sql := "UPDATE " + m.tableName + " SET " + strings.Join(fields, ", ") + " " + where
-		return m.NewSQL(sql, values...)
 	}
+	for jsonbField, changes := range jsonbFields {
+		var field = fmt.Sprintf("COALESCE(%s, '{}'::jsonb)", jsonbField)
+		for f, value := range changes {
+			field = fmt.Sprintf("jsonb_set(%s, '{%s}', $%d)", field, f.ColumnName, i)
+			j, _ := json.Marshal(value)
+			values = append(values, string(j))
+			i += 1
+		}
+		fields = append(fields, jsonbField+" = "+field)
+	}
+	sql := "UPDATE " + s.model.tableName + " SET " + strings.Join(fields, ", ")
+	var where string
+	moreThanOne := len(s.conditions) > 1
+	for i, conf := range s.conditions {
+		if i > 0 {
+			where += " AND "
+		}
+		if moreThanOne {
+			where += "(" + conf + ")"
+		} else {
+			where += conf
+		}
+	}
+	if where != "" {
+		sql += " WHERE " + where
+	}
+	n := s.model.NewSQL(sql, values...)
+	s.sql = n.sql
+	s.values = n.values
+	return s
 }
 
 // Delete builds a DELETE statement. You can add extra clause (like WHERE,
