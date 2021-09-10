@@ -173,7 +173,7 @@ func ExamplePost() {
 	fmt.Println("count:", c)
 
 	var rowsDeleted int
-	d := m.Delete("WHERE id = $1", newPostId)
+	d := m.Delete().Where("id = $1", newPostId)
 	fmt.Println(d)
 	d.MustExecute(&rowsDeleted)
 	fmt.Println("deleted:", rowsDeleted)

@@ -118,8 +118,16 @@ func TestModel(_t *testing.T) {
 	t.String(f.Name, "Name")
 	t.String(m1.Find().String(), "SELECT id, name, password FROM admins")
 	t.String(m1.Delete().String(), "DELETE FROM admins")
-	t.String(m1.Delete("WHERE id = $1", 1).String(),
+	t.String(m1.Delete().Returning("id").String(), "DELETE FROM admins RETURNING id")
+	t.String(m1.Delete().Using("users", "orders").
+		Where("admins.user_id = users.id").Where("admins.order_id = orders.id").
+		Where("orders.name = $1", "foobar").Returning("admins.id").String(),
+		"DELETE FROM admins USING users, orders WHERE (admins.user_id = users.id) "+
+			"AND (admins.order_id = orders.id) AND (orders.name = $1) RETURNING admins.id")
+	t.String(m1.Delete().Where("id = $1", 1).String(),
 		"DELETE FROM admins WHERE id = $1")
+	t.String(m1.Delete().Where("id = $1", 1).Where("name = $2", "foobar").String(),
+		"DELETE FROM admins WHERE (id = $1) AND (name = $2)")
 	t.String(m1.Insert(c).String(), "INSERT INTO admins (name) VALUES ($1)")
 	t.String(m1.Insert(c).Returning("id").String(), "INSERT INTO admins (name) VALUES ($1) RETURNING id")
 	t.String(m1.Insert(c).Returning("id AS foobar", "name").String(), "INSERT INTO admins (name) VALUES ($1) RETURNING id AS foobar, name")

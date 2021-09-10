@@ -159,7 +159,7 @@ m.Update(
 
 ```go
 var rowsDeleted int
-m.Delete("WHERE id = $1", newPostId).MustExecute(&rowsDeleted)
+m.Delete().Where("id = $1", newPostId).MustExecute(&rowsDeleted)
 ```
 
 ### Other

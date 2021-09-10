@@ -721,17 +721,36 @@ func (s *UpdateSQL) Reload() *UpdateSQL {
 // RETURNING) to the statement as the first argument. The rest arguments are
 // for any placeholder parameters in the statement.
 //  var ids []int
-//  psql.NewModelTable("reports", conn).Delete("RETURNING id").MustQuery(&ids)
-func (m Model) Delete(values ...interface{}) *SQL {
+//  psql.NewModelTable("reports", conn).Delete().Returning("id").MustQuery(&ids)
+func (m Model) Delete() *DeleteSQL {
+	return m.NewSQL("").AsDelete().Reload()
+}
+
+// Update SQL and values in the DeleteSQL object due to changes of conditions.
+func (s *DeleteSQL) Reload() *DeleteSQL {
+	sql := "DELETE FROM " + s.model.tableName
+	if s.usingList != "" {
+		sql += " USING " + s.usingList
+	}
 	var where string
-	if len(values) > 0 {
-		if w, ok := values[0].(string); ok {
-			where = w
-			values = values[1:]
+	moreThanOne := len(s.conditions) > 1
+	for i, conf := range s.conditions {
+		if i > 0 {
+			where += " AND "
+		}
+		if moreThanOne {
+			where += "(" + conf + ")"
+		} else {
+			where += conf
 		}
 	}
-	sql := "DELETE FROM " + m.tableName + " " + where
-	return m.NewSQL(sql, values...)
+	if where != "" {
+		sql += " WHERE " + where
+	}
+	n := s.model.NewSQL(sql, s.args...)
+	s.sql = n.sql
+	s.values = n.values
+	return s
 }
 
 // Helper to add CreatedAt of current time changes.

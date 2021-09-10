@@ -59,6 +59,14 @@ type (
 		outputExpression string
 	}
 
+	DeleteSQL struct {
+		*SQL
+		conditions       []string
+		args             []interface{}
+		usingList        string
+		outputExpression string
+	}
+
 	jsonbRaw map[string]json.RawMessage
 )
 
@@ -105,6 +113,15 @@ func (s SQL) AsUpdate(changes ...interface{}) *UpdateSQL {
 	}
 	u.SQL.main = u
 	return u
+}
+
+// Convert SQL to DeleteSQL.
+func (s SQL) AsDelete() *DeleteSQL {
+	d := &DeleteSQL{
+		SQL: &s,
+	}
+	d.SQL.main = d
+	return d
 }
 
 // Adds RETURNING clause to INSERT INTO statement.
@@ -168,7 +185,7 @@ func (s InsertSQL) String() string {
 	return sql
 }
 
-// Adds RETURNING clause to Update statement.
+// Adds RETURNING clause to UPDATE statement.
 func (s *UpdateSQL) Returning(expressions ...string) *UpdateSQL {
 	s.outputExpression = strings.Join(expressions, ", ")
 	return s
@@ -182,6 +199,33 @@ func (s *UpdateSQL) Where(condition string, args ...interface{}) *UpdateSQL {
 }
 
 func (s *UpdateSQL) String() string {
+	sql := s.sql
+	if s.outputExpression != "" {
+		sql += " RETURNING " + s.outputExpression
+	}
+	return sql
+}
+
+// Adds condition to DELETE FROM statement.
+func (s *DeleteSQL) Where(condition string, args ...interface{}) *DeleteSQL {
+	s.conditions = append(s.conditions, condition)
+	s.args = append(s.args, args...)
+	return s.Reload()
+}
+
+// Adds RETURNING clause to DELETE FROM statement.
+func (s *DeleteSQL) Using(list ...string) *DeleteSQL {
+	s.usingList = strings.Join(list, ", ")
+	return s.Reload()
+}
+
+// Adds RETURNING clause to DELETE FROM statement.
+func (s *DeleteSQL) Returning(expressions ...string) *DeleteSQL {
+	s.outputExpression = strings.Join(expressions, ", ")
+	return s
+}
+
+func (s *DeleteSQL) String() string {
 	sql := s.sql
 	if s.outputExpression != "" {
 		sql += " RETURNING " + s.outputExpression
