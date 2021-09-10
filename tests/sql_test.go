@@ -256,10 +256,10 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.String("first order sources 2", sources2, `{"sources2": {"cash": 100}}`)      // map
 	t.String("first order sources 3", sources3, `{"sources3": {"Word": "finish"}}`) // struct
 
-	exists := model.MustExists("WHERE id = $1", id)
+	exists := model.Where("id = $1", id).MustExists()
 	t.Bool("first order exists", exists)
 
-	exists2 := model.MustExists("WHERE id = $1", id+1)
+	exists2 := model.Where("id = $1", id+1).MustExists()
 	t.Bool("first order exists #2", exists2 == false)
 
 	err = model.Insert(
@@ -358,11 +358,11 @@ func testCRUD(_t *testing.T, conn db.DB) {
 		id     int
 	}
 	psql.NewModelTable("orders", conn, logger.StandardLogger).
-		Select("status, id", "ORDER BY id ASC").MustQuery(&customOrders)
+		Select("status, id").OrderBy("id ASC").MustQuery(&customOrders)
 	t.String("custom order struct", fmt.Sprintf("%+v", customOrders), "[{status:new id:1} {status:new2 id:2}]")
 
 	var firstOrder order
-	err = model.Find("ORDER BY created_at ASC LIMIT 1").Query(&firstOrder) // "LIMIT 1" only necessary for gopg
+	err = model.Find().OrderBy("created_at ASC").Limit(1).Query(&firstOrder) // "LIMIT 1" only necessary for gopg
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +404,7 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.String("bind order trade number", firstOrder.TradeNumber, "")
 
 	var orders []order
-	err = model.Find("ORDER BY created_at DESC").Query(&orders)
+	err = model.Find().OrderBy("created_at DESC").Query(&orders)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +467,7 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.Int("rows affected", rowsAffected, 2)
 
 	var secondOrder order
-	err = model.Find("WHERE id = $1", 2).Query(&secondOrder)
+	err = model.Find().Where("id = $1", 2).Query(&secondOrder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -487,6 +487,11 @@ func testCRUD(_t *testing.T, conn db.DB) {
 		t.Fatal(err)
 	}
 	t.Int("rows count", count, 2)
+
+	var total string
+	model.Where("id > $1", 0).GroupBy("id").Select("sum(total_amount)::text").
+		Having("sum(total_amount) > $2", 1).MustQueryRow(&total)
+	t.String("total", total, "12.34")
 
 	var rowsDeleted int
 	err = model.Delete().Execute(&rowsDeleted)

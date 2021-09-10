@@ -41,6 +41,19 @@ type (
 		values []interface{}
 	}
 
+	// SelectSQL can be created with Model.NewSQL().AsSelect()
+	SelectSQL struct {
+		*SQL
+		fields     []string
+		conditions []string
+		args       []interface{}
+		havings    []string
+		groupBy    string
+		orderBy    string
+		limit      string
+		offset     string
+	}
+
 	// InsertSQL can be created with Model.NewSQL().AsInsert()
 	InsertSQL struct {
 		*SQL
@@ -59,6 +72,7 @@ type (
 		outputExpression string
 	}
 
+	// DeleteSQL can be created with Model.NewSQL().AsDelete()
 	DeleteSQL struct {
 		*SQL
 		conditions       []string
@@ -95,6 +109,16 @@ func (m Model) NewSQL(sql string, values ...interface{}) *SQL {
 	}
 }
 
+// Convert SQL to InsertSQL. The optional fields will be used in Select().
+func (s SQL) AsSelect(fields ...string) *SelectSQL {
+	f := &SelectSQL{
+		SQL:    &s,
+		fields: fields,
+	}
+	f.SQL.main = f
+	return f
+}
+
 // Convert SQL to InsertSQL. The optional fields will be used in DoUpdateAll().
 func (s SQL) AsInsert(fields ...string) *InsertSQL {
 	i := &InsertSQL{
@@ -122,6 +146,173 @@ func (s SQL) AsDelete() *DeleteSQL {
 	}
 	d.SQL.main = d
 	return d
+}
+
+// Update SQL and values in the DeleteSQL object due to changes of conditions.
+func (s *SelectSQL) Reload() *SelectSQL {
+	sql := "SELECT " + strings.Join(s.fields, ", ") + " FROM " + s.model.tableName
+	var where string
+	moreThanOne := len(s.conditions) > 1
+	for i, conf := range s.conditions {
+		if i > 0 {
+			where += " AND "
+		}
+		if moreThanOne {
+			where += "(" + conf + ")"
+		} else {
+			where += conf
+		}
+	}
+	if where != "" {
+		sql += " WHERE " + where
+	}
+	if s.groupBy != "" {
+		sql += " GROUP BY " + s.groupBy
+		var having string
+		moreThanOne = len(s.havings) > 1
+		for i, conf := range s.havings {
+			if i > 0 {
+				having += " AND "
+			}
+			if moreThanOne {
+				having += "(" + conf + ")"
+			} else {
+				having += conf
+			}
+		}
+		if having != "" {
+			sql += " HAVING " + having
+		}
+	}
+	n := s.model.NewSQL(sql, s.args...)
+	s.sql = n.sql
+	s.values = n.values
+	return s
+}
+
+// Create a SELECT query statement with all fields of a Model.
+func (s *SelectSQL) Find() *SelectSQL {
+	fields := []string{}
+	for _, field := range s.model.modelFields {
+		if field.Jsonb != "" {
+			continue
+		}
+		fields = append(fields, field.ColumnName)
+	}
+	for _, jsonbField := range s.model.jsonbColumns {
+		fields = append(fields, jsonbField)
+	}
+	return s.ResetSelect(fields...)
+}
+
+// MustExists is like Exists but panics if existence check operation fails.
+// Returns true if record exists, false if not exists.
+func (s *SelectSQL) MustExists() bool {
+	exists, err := s.Exists()
+	if err != nil {
+		panic(err)
+	}
+	return exists
+}
+
+// Create and execute a SELECT 1 AS one statement. Returns true if record
+// exists, false if not exists.
+func (s *SelectSQL) Exists() (exists bool, err error) {
+	var ret int
+	err = s.ResetSelect("1 AS one").QueryRow(&ret)
+	if err == s.model.connection.ErrNoRows() {
+		err = nil
+		return
+	}
+	exists = ret == 1
+	return
+}
+
+// MustCount is like Count but panics if count operation fails.
+func (s *SelectSQL) MustCount() int {
+	count, err := s.Count()
+	if err != nil {
+		panic(err)
+	}
+	return count
+}
+
+// Create and execute a SELECT COUNT(*) statement, return number of rows.
+func (s *SelectSQL) Count() (count int, err error) {
+	err = s.ResetSelect("COUNT(*)").QueryRow(&count)
+	return
+}
+
+// Set expressions to SELECT statement.
+func (s *SelectSQL) ResetSelect(expressions ...string) *SelectSQL {
+	s.fields = expressions
+	return s.Reload()
+}
+
+// Add expressions to SELECT statement.
+func (s *SelectSQL) Select(expressions ...string) *SelectSQL {
+	s.fields = append(s.fields, expressions...)
+	return s.Reload()
+}
+
+// Adds GROUP BY to SELECT statement.
+func (s *SelectSQL) GroupBy(expressions ...string) *SelectSQL {
+	s.groupBy = strings.Join(expressions, ", ")
+	return s.Reload()
+}
+
+// Adds HAVING to SELECT statement.
+func (s *SelectSQL) Having(condition string, args ...interface{}) *SelectSQL {
+	s.havings = append(s.havings, condition)
+	s.args = append(s.args, args...)
+	return s.Reload()
+}
+
+// Adds ORDER BY to SELECT statement.
+func (s *SelectSQL) OrderBy(expressions ...string) *SelectSQL {
+	s.orderBy = strings.Join(expressions, ", ")
+	return s
+}
+
+// Adds LIMIT to SELECT statement.
+func (s *SelectSQL) Limit(count interface{}) *SelectSQL {
+	if count == nil {
+		s.limit = ""
+	} else {
+		s.limit = fmt.Sprint(count)
+	}
+	return s
+}
+
+// Adds OFFSET to SELECT statement.
+func (s *SelectSQL) Offset(start interface{}) *SelectSQL {
+	if start == nil {
+		s.offset = ""
+	} else {
+		s.offset = fmt.Sprint(start)
+	}
+	return s
+}
+
+// Adds condition to SELECT statement.
+func (s *SelectSQL) Where(condition string, args ...interface{}) *SelectSQL {
+	s.conditions = append(s.conditions, condition)
+	s.args = append(s.args, args...)
+	return s.Reload()
+}
+
+func (s *SelectSQL) String() string {
+	sql := s.sql
+	if s.orderBy != "" {
+		sql += " ORDER BY " + s.orderBy
+	}
+	if s.limit != "" {
+		sql += " LIMIT " + s.limit
+	}
+	if s.offset != "" {
+		sql += " OFFSET " + s.offset
+	}
+	return sql
 }
 
 // Adds RETURNING clause to INSERT INTO statement.

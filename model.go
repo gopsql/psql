@@ -446,48 +446,40 @@ func (m Model) FieldChanges(in RawChanges) (out Changes) {
 	return
 }
 
-// Create a SELECT query statement with all fields of a Model. You can provide
-// conditions (like WHERE, ORDER BY, LIMIT) to the statement as the first
-// argument. The rest arguments are for any placeholder parameters in the
-// statement. If you want to use other data type than the type of struct passed
-// in NewModel(), see Select().
+func (m Model) newSelect(fields ...string) *SelectSQL {
+	return m.NewSQL("").AsSelect(fields...)
+}
+
+// Create a SELECT query statement with all fields of a Model. If you want to
+// use other data type than the type of struct passed in NewModel(), see
+// Select().
 //  // put results into a slice
 //  var users []models.User
 //  psql.NewModel(models.User{}, conn).Find().MustQuery(&users)
 //
 //  // put results into a struct
 //  var user models.User
-//  psql.NewModel(models.User{}, conn).Find("WHERE id = $1", 1).MustQuery(&user)
-func (m Model) Find(values ...interface{}) *SQL {
-	fields := []string{}
-	for _, field := range m.modelFields {
-		if field.Jsonb != "" {
-			continue
-		}
-		fields = append(fields, field.ColumnName)
-	}
-	for _, jsonbField := range m.jsonbColumns {
-		fields = append(fields, jsonbField)
-	}
-	return m.Select(strings.Join(fields, ", "), values...)
+//  psql.NewModel(models.User{}, conn).Find().Where("id = $1", 1).MustQuery(&user)
+func (m Model) Find() *SelectSQL {
+	return m.newSelect().Find()
 }
 
 // Select is like Find but can choose what columns to retrieve.
 //
 // To put results into a slice of strings:
 //  var names []string
-//  psql.NewModelTable("users", conn).Select("name", "ORDER BY id ASC").MustQuery(&names)
+//  psql.NewModelTable("users", conn).Select("name").OrderBy("id ASC").MustQuery(&names)
 //
 // To put results into a slice of custom struct:
 //  var users []struct {
 //  	name string
 //  	id   int
 //  }
-//  psql.NewModelTable("users", conn).Select("name, id", "ORDER BY id ASC").MustQuery(&users)
+//  psql.NewModelTable("users", conn).Select("name", "id").OrderBy("id ASC").MustQuery(&users)
 //
 // To group results by the key:
 //  var id2name map[int]string
-//  psql.NewModelTable("users", conn).Select("id, name").MustQuery(&id2name)
+//  psql.NewModelTable("users", conn).Select("id", "name").MustQuery(&id2name)
 //
 // If it is one-to-many, use slice as map's value:
 //  var users map[[2]string][]struct {
@@ -495,40 +487,19 @@ func (m Model) Find(values ...interface{}) *SQL {
 //  	name string
 //  }
 //  psql.NewModelTable("users", conn).Select("country, city, id, name").MustQuery(&users)
-func (m Model) Select(fields string, values ...interface{}) *SQL {
-	var where string
-	if len(values) > 0 {
-		if w, ok := values[0].(string); ok {
-			where = w
-			values = values[1:]
-		}
-	}
-	sql := "SELECT " + fields + " FROM " + m.tableName + " " + where
-	return m.NewSQL(sql, values...)
+func (m Model) Select(fields ...string) *SelectSQL {
+	return m.newSelect(fields...).Reload()
 }
 
-// MustCount is like Count but panics if count operation fails.
-func (m Model) MustCount(values ...interface{}) int {
-	count, err := m.Count(values...)
-	if err != nil {
-		panic(err)
-	}
-	return count
-}
-
-// Create and execute a SELECT COUNT(*) statement, return number of rows. You
-// can provide conditions (like WHERE, ORDER BY, LIMIT) to the statement as the
-// first argument. The rest arguments are for any placeholder parameters in
-// the statement.
-func (m Model) Count(values ...interface{}) (count int, err error) {
-	err = m.Select("COUNT(*)", values...).QueryRow(&count)
-	return
+// Create a SELECT query statement with condition.
+func (m Model) Where(condition string, args ...interface{}) *SelectSQL {
+	return m.newSelect().Where(condition, args...)
 }
 
 // MustExists is like Exists but panics if existence check operation fails.
 // Returns true if record exists, false if not exists.
-func (m Model) MustExists(values ...interface{}) bool {
-	exists, err := m.Exists(values...)
+func (m Model) MustExists() bool {
+	exists, err := m.Exists()
 	if err != nil {
 		panic(err)
 	}
@@ -537,15 +508,22 @@ func (m Model) MustExists(values ...interface{}) bool {
 
 // Create and execute a SELECT 1 AS one statement. Returns true if record
 // exists, false if not exists.
-func (m Model) Exists(values ...interface{}) (exists bool, err error) {
-	var ret int
-	err = m.Select("1 AS one", values...).QueryRow(&ret)
-	if err == m.connection.ErrNoRows() {
-		err = nil
-		return
+func (m Model) Exists() (exists bool, err error) {
+	return m.newSelect().Exists()
+}
+
+// MustCount is like Count but panics if count operation fails.
+func (m Model) MustCount() int {
+	count, err := m.Count()
+	if err != nil {
+		panic(err)
 	}
-	exists = ret == 1
-	return
+	return count
+}
+
+// Create and execute a SELECT COUNT(*) statement, return number of rows.
+func (m Model) Count() (count int, err error) {
+	return m.newSelect().Count()
 }
 
 // MustAssign is like Assign but panics if assign operation fails.

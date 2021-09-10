@@ -117,6 +117,18 @@ func TestModel(_t *testing.T) {
 	}
 	t.String(f.Name, "Name")
 	t.String(m1.Find().String(), "SELECT id, name, password FROM admins")
+	t.String(m1.Find().Where("id = $1", 1).String(), "SELECT id, name, password FROM admins WHERE id = $1")
+	t.String(m1.Where("id = $1", 1).Find().String(), "SELECT id, name, password FROM admins WHERE id = $1")
+	t.String(m1.Select("id", "name").String(), "SELECT id, name FROM admins")
+	t.String(m1.Select("id", "name").Where("status = $1", "new").String(), "SELECT id, name FROM admins WHERE status = $1")
+	t.String(m1.Where("status = $1", "new").Select("id", "name").String(), "SELECT id, name FROM admins WHERE status = $1")
+	t.String(m1.Select("id").OrderBy("id DESC").String(), "SELECT id FROM admins ORDER BY id DESC")
+	t.String(m1.Select("id").OrderBy("id DESC").Limit(2).String(), "SELECT id FROM admins ORDER BY id DESC LIMIT 2")
+	t.String(m1.Select("id").OrderBy("id DESC").Limit(2).Limit(nil).String(), "SELECT id FROM admins ORDER BY id DESC")
+	t.String(m1.Select("id").Offset("10").Limit(2).String(), "SELECT id FROM admins LIMIT 2 OFFSET 10")
+	t.String(m1.Select("array_agg(id)").GroupBy("name", "status").String(), "SELECT array_agg(id) FROM admins GROUP BY name, status")
+	t.String(m1.Select("sum(price)").Where("id > $1", 1).GroupBy("kind").Having("sum(price) < $2", 3).String(),
+		"SELECT sum(price) FROM admins WHERE id > $1 GROUP BY kind HAVING sum(price) < $2")
 	t.String(m1.Delete().String(), "DELETE FROM admins")
 	t.String(m1.Delete().Returning("id").String(), "DELETE FROM admins RETURNING id")
 	t.String(m1.Delete().Using("users", "orders").

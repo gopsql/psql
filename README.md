@@ -122,22 +122,22 @@ m.Insert(
 
 ```go
 var firstPost Post
-m.Find("WHERE id = $1", newPostId).MustQuery(&firstPost)
+m.Find().Where("id = $1", newPostId).MustQuery(&firstPost)
 // {1 2 hello world!}
 
 var ids []int
-m.Select("id", "ORDER BY id ASC").MustQuery(&ids)
+m.Select("id").OrderBy("id ASC").MustQuery(&ids)
 // [1]
 
 // group results by key
 var id2title map[int]string
-m.Select("id, title").MustQuery(&id2title)
+m.Select("id", "title").MustQuery(&id2title)
 // map[1:hello]
 
 // map's key and value can be int, string, bool, array or struct
 // if it is one-to-many, use slice as map's value
 var postsByCategoryId map[struct{ categoryId int }][]struct{ title string }
-m.Select("category_id, title").MustQuery(&postsByCategoryId)
+m.Select("category_id", "title").MustQuery(&postsByCategoryId)
 fmt.Println("map:", postsByCategoryId)
 // map[{2}:[{hello}]]
 
@@ -165,6 +165,6 @@ m.Delete().Where("id = $1", newPostId).MustExecute(&rowsDeleted)
 ### Other
 
 ```go
-m.MustExists("WHERE id = $1", newPostId) // true or false
+m.Where("id = $1", newPostId).MustExists() // true or false
 m.MustCount() // integer
 ```

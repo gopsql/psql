@@ -139,11 +139,11 @@ func ExamplePost() {
 	fmt.Println("id:", newPostId)
 
 	var firstPost Post
-	m.Find("WHERE id = $1", newPostId).MustQuery(&firstPost)
+	m.Find().Where("id = $1", newPostId).MustQuery(&firstPost)
 	fmt.Println("post:", firstPost)
 
 	var ids []int
-	m.Select("id", "ORDER BY id ASC").MustQuery(&ids)
+	m.Select("id").OrderBy("id ASC").MustQuery(&ids)
 	fmt.Println("ids:", ids)
 
 	var id2title map[int]string
@@ -166,7 +166,10 @@ func ExamplePost() {
 	m.Find().MustQuery(&posts)
 	fmt.Println("posts:", posts)
 
-	e := m.MustExists("WHERE id = $1", newPostId)
+	n := m.Where("id > $1", 0).MustCount()
+	fmt.Println("count:", n)
+
+	e := m.Where("id = $1", newPostId).MustExists()
 	fmt.Println("exists:", e)
 
 	c := m.MustCount()
@@ -195,6 +198,7 @@ func ExamplePost() {
 	// UPDATE posts SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', $2) WHERE id = $1
 	// updated: 1
 	// posts: [{1 2 hello WORLD!}]
+	// count: 1
 	// exists: true
 	// count: 1
 	// DELETE FROM posts WHERE id = $1
