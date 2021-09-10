@@ -41,17 +41,25 @@ type (
 		values []interface{}
 	}
 
+	sqlConditions struct {
+		conditions []string
+		args       []interface{}
+	}
+
+	sqlHavings struct {
+		havings []string
+	}
+
 	// SelectSQL can be created with Model.NewSQL().AsSelect()
 	SelectSQL struct {
 		*SQL
-		fields     []string
-		conditions []string
-		args       []interface{}
-		havings    []string
-		groupBy    string
-		orderBy    string
-		limit      string
-		offset     string
+		sqlConditions
+		sqlHavings
+		fields  []string
+		groupBy string
+		orderBy string
+		limit   string
+		offset  string
 	}
 
 	// InsertSQL can be created with Model.NewSQL().AsInsert()
@@ -66,17 +74,15 @@ type (
 	// UpdateSQL can be created with Model.NewSQL().AsUpdate()
 	UpdateSQL struct {
 		*SQL
+		sqlConditions
 		changes          []interface{}
-		conditions       []string
-		args             []interface{}
 		outputExpression string
 	}
 
 	// DeleteSQL can be created with Model.NewSQL().AsDelete()
 	DeleteSQL struct {
 		*SQL
-		conditions       []string
-		args             []interface{}
+		sqlConditions
 		usingList        string
 		outputExpression string
 	}
@@ -150,39 +156,9 @@ func (s SQL) AsDelete() *DeleteSQL {
 
 // Update SQL and values in the DeleteSQL object due to changes of conditions.
 func (s *SelectSQL) Reload() *SelectSQL {
-	sql := "SELECT " + strings.Join(s.fields, ", ") + " FROM " + s.model.tableName
-	var where string
-	moreThanOne := len(s.conditions) > 1
-	for i, conf := range s.conditions {
-		if i > 0 {
-			where += " AND "
-		}
-		if moreThanOne {
-			where += "(" + conf + ")"
-		} else {
-			where += conf
-		}
-	}
-	if where != "" {
-		sql += " WHERE " + where
-	}
+	sql := "SELECT " + strings.Join(s.fields, ", ") + " FROM " + s.model.tableName + s.where()
 	if s.groupBy != "" {
-		sql += " GROUP BY " + s.groupBy
-		var having string
-		moreThanOne = len(s.havings) > 1
-		for i, conf := range s.havings {
-			if i > 0 {
-				having += " AND "
-			}
-			if moreThanOne {
-				having += "(" + conf + ")"
-			} else {
-				having += conf
-			}
-		}
-		if having != "" {
-			sql += " HAVING " + having
-		}
+		sql += " GROUP BY " + s.groupBy + s.having()
 	}
 	n := s.model.NewSQL(sql, s.args...)
 	s.sql = n.sql
@@ -735,6 +711,32 @@ func (s SQL) log(sql string, args []interface{}) {
 		return
 	}
 	s.model.logger.Debug(colored, args)
+}
+
+func (s sqlConditions) where() string {
+	return conditionsToStr(s.conditions, " WHERE ")
+}
+
+func (s sqlHavings) having() string {
+	return conditionsToStr(s.havings, " HAVING ")
+}
+
+func conditionsToStr(conds []string, prefix string) (out string) {
+	moreThanOne := len(conds) > 1
+	for i, conf := range conds {
+		if i > 0 {
+			out += " AND "
+		}
+		if moreThanOne {
+			out += "(" + conf + ")"
+		} else {
+			out += conf
+		}
+	}
+	if out != "" {
+		out = prefix + out
+	}
+	return
 }
 
 func returnRowsAffected(dest []interface{}) func(db.Result, error) error {

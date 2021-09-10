@@ -673,22 +673,7 @@ func (s *UpdateSQL) Reload() *UpdateSQL {
 		}
 		fields = append(fields, jsonbField+" = "+field)
 	}
-	sql := "UPDATE " + s.model.tableName + " SET " + strings.Join(fields, ", ")
-	var where string
-	moreThanOne := len(s.conditions) > 1
-	for i, conf := range s.conditions {
-		if i > 0 {
-			where += " AND "
-		}
-		if moreThanOne {
-			where += "(" + conf + ")"
-		} else {
-			where += conf
-		}
-	}
-	if where != "" {
-		sql += " WHERE " + where
-	}
+	sql := "UPDATE " + s.model.tableName + " SET " + strings.Join(fields, ", ") + s.where()
 	n := s.model.NewSQL(sql, values...)
 	s.sql = n.sql
 	s.values = n.values
@@ -710,21 +695,7 @@ func (s *DeleteSQL) Reload() *DeleteSQL {
 	if s.usingList != "" {
 		sql += " USING " + s.usingList
 	}
-	var where string
-	moreThanOne := len(s.conditions) > 1
-	for i, conf := range s.conditions {
-		if i > 0 {
-			where += " AND "
-		}
-		if moreThanOne {
-			where += "(" + conf + ")"
-		} else {
-			where += conf
-		}
-	}
-	if where != "" {
-		sql += " WHERE " + where
-	}
+	sql += s.where()
 	n := s.model.NewSQL(sql, s.args...)
 	s.sql = n.sql
 	s.values = n.values
