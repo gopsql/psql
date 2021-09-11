@@ -456,10 +456,24 @@ func (s SQL) Query(target interface{}) error {
 	rt = rt.Elem()
 
 	kind := rt.Kind()
+	if kind == reflect.Slice {
+		rt = rt.Elem()
+	}
+
+	var mi *modelInfo
+	if s.model.structType != nil && rt == s.model.structType {
+		// use model's existing info if type is the same
+		mi = s.model.modelInfo
+	} else {
+		// different type of struct
+		mi = &modelInfo{tableName: s.model.tableName}
+		mi.modelFields, mi.jsonbColumns = parseStruct(rt)
+	}
+
 	if kind == reflect.Struct { // if target is not a slice, use QueryRow instead
 		rv := reflect.Indirect(reflect.ValueOf(target))
 		s.log(s.String(), s.values)
-		return s.scan(rv, s.model.connection.QueryRow(s.String(), s.values...))
+		return mi.scan(rv, s.model.connection.QueryRow(s.String(), s.values...))
 	} else if kind == reflect.Map {
 		s.log(s.String(), s.values)
 		rows, err := s.model.connection.Query(s.String(), s.values...)
@@ -499,7 +513,6 @@ func (s SQL) Query(target interface{}) error {
 		return ErrInvalidTarget
 	}
 
-	rt = rt.Elem()
 	s.log(s.String(), s.values)
 	rows, err := s.model.connection.Query(s.String(), s.values...)
 	if err != nil {
@@ -509,7 +522,7 @@ func (s SQL) Query(target interface{}) error {
 	v := reflect.Indirect(reflect.ValueOf(target))
 	for rows.Next() {
 		rv := reflect.New(rt).Elem()
-		if err := s.scan(rv, rows); err != nil {
+		if err := mi.scan(rv, rows); err != nil {
 			return err
 		}
 		v.Set(reflect.Append(v, rv))
@@ -518,17 +531,17 @@ func (s SQL) Query(target interface{}) error {
 }
 
 // scan a scannable (Row or Rows) into every field of a struct
-func (s SQL) scan(rv reflect.Value, scannable db.Scannable) error {
-	if rv.Kind() != reflect.Struct || (s.model.structType != nil && rv.Type() != s.model.structType) {
+func (mi *modelInfo) scan(rv reflect.Value, scannable db.Scannable) error {
+	if rv.Kind() != reflect.Struct || (len(mi.modelFields) == 0 && len(mi.jsonbColumns) == 0) {
 		return scannable.Scan(rv.Addr().Interface())
 	}
 	f := rv.FieldByName(tableNameField)
 	if f.Kind() == reflect.String {
 		// hack
-		reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Elem().SetString(s.model.tableName)
+		reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Elem().SetString(mi.tableName)
 	}
 	dests := []interface{}{}
-	for _, field := range s.model.modelFields {
+	for _, field := range mi.modelFields {
 		if field.Jsonb != "" {
 			continue
 		}
@@ -536,22 +549,16 @@ func (s SQL) scan(rv reflect.Value, scannable db.Scannable) error {
 		dests = append(dests, pointer)
 	}
 	jsonbValues := []jsonbRaw{}
-	for range s.model.jsonbColumns {
+	for range mi.jsonbColumns {
 		jsonb := jsonbRaw{}
 		dests = append(dests, &jsonb)
 		jsonbValues = append(jsonbValues, jsonb)
-	}
-	if s.model.structType == nil || len(dests) == 0 {
-		rt := rv.Type()
-		for i := 0; i < rt.NumField(); i++ {
-			dests = append(dests, getAddrOfStructField(rt.Field(i), rv.Field(i)))
-		}
 	}
 	if err := scannable.Scan(dests...); err != nil {
 		return err
 	}
 	for _, jsonb := range jsonbValues {
-		for _, field := range s.model.modelFields {
+		for _, field := range mi.modelFields {
 			if field.Jsonb == "" {
 				continue
 			}

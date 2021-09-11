@@ -22,9 +22,13 @@ type (
 	// struct field names or theirs "column" tags. Both table names and
 	// field names are in snake_case by default.
 	Model struct {
-		connection   db.DB
-		logger       logger.Logger
-		structType   reflect.Type
+		connection db.DB
+		logger     logger.Logger
+		structType reflect.Type
+		*modelInfo
+	}
+
+	modelInfo struct {
 		tableName    string
 		modelFields  []Field
 		jsonbColumns []string
@@ -59,7 +63,7 @@ var (
 // Initialize a Model from a struct. For available options, see SetOptions().
 func NewModel(object interface{}, options ...interface{}) (m *Model) {
 	m = NewModelSlim(object, options...)
-	m.modelFields, m.jsonbColumns = m.parseStruct(object)
+	m.modelFields, m.jsonbColumns = parseStruct(object)
 	return
 }
 
@@ -69,7 +73,9 @@ func NewModel(object interface{}, options ...interface{}) (m *Model) {
 // For available options, see SetOptions().
 func NewModelSlim(object interface{}, options ...interface{}) (m *Model) {
 	m = &Model{
-		tableName:  ToTableName(object),
+		modelInfo: &modelInfo{
+			tableName: ToTableName(object),
+		},
 		structType: reflect.TypeOf(object),
 	}
 	m.SetOptions(options...)
@@ -82,7 +88,9 @@ func NewModelSlim(object interface{}, options ...interface{}) (m *Model) {
 // For available options, see SetOptions().
 func NewModelTable(tableName string, options ...interface{}) (m *Model) {
 	m = &Model{
-		tableName:  tableName,
+		modelInfo: &modelInfo{
+			tableName: tableName,
+		},
 		structType: nil,
 	}
 	m.SetOptions(options...)
@@ -190,12 +198,14 @@ func (m Model) DropSchema() string {
 // Clone returns a copy of the model.
 func (m *Model) Clone() *Model {
 	return &Model{
-		connection:   m.connection,
-		logger:       m.logger,
-		structType:   m.structType,
-		tableName:    m.tableName,
-		modelFields:  m.modelFields,
-		jsonbColumns: m.jsonbColumns,
+		connection: m.connection,
+		logger:     m.logger,
+		structType: m.structType,
+		modelInfo: &modelInfo{
+			tableName:    m.tableName,
+			modelFields:  m.modelFields,
+			jsonbColumns: m.jsonbColumns,
+		},
 	}
 }
 
@@ -743,7 +753,7 @@ func (m Model) getChanges(in []interface{}) (out []Changes) {
 }
 
 // parseStruct collects column names, json names and jsonb names
-func (m *Model) parseStruct(obj interface{}) (fields []Field, jsonbColumns []string) {
+func parseStruct(obj interface{}) (fields []Field, jsonbColumns []string) {
 	var rt reflect.Type
 	if o, ok := obj.(reflect.Type); ok {
 		rt = o
@@ -759,7 +769,7 @@ func (m *Model) parseStruct(obj interface{}) (fields []Field, jsonbColumns []str
 	for i := 0; i < rt.NumField(); i++ {
 		f := rt.Field(i)
 		if f.Anonymous {
-			f, j := m.parseStruct(f.Type)
+			f, j := parseStruct(f.Type)
 			fields = append(fields, f...)
 			jsonbColumns = append(jsonbColumns, j...)
 			continue

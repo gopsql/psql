@@ -353,13 +353,23 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.Bool("created_at 0", d1 > 0 && d1 < 200*time.Millisecond)
 	t.Bool("created_at 1", d2 > 0 && d2 < 200*time.Millisecond)
 
+	customModel := psql.NewModelTable("orders", conn, logger.StandardLogger)
 	var customOrders []struct {
-		status string
-		id     int
+		Status       string
+		id           int    `column:"id"`
+		FieldInJsonb string `jsonb:"meta"`
 	}
-	psql.NewModelTable("orders", conn, logger.StandardLogger).
-		Select("status, id").OrderBy("id ASC").MustQuery(&customOrders)
-	t.String("custom order struct", fmt.Sprintf("%+v", customOrders), "[{status:new id:1} {status:new2 id:2}]")
+	customModel.Select("status, id, meta").OrderBy("id ASC").MustQuery(&customOrders)
+	t.String("custom order struct", fmt.Sprintf("%+v", customOrders),
+		"[{Status:new id:1 FieldInJsonb:yes} {Status:new2 id:2 FieldInJsonb:}]")
+
+	var customOrder struct {
+		Status       string
+		Id           int
+		FieldInJsonb string `jsonb:"meta"`
+	}
+	customModel.Select("status, id, meta").OrderBy("id ASC").Limit(1).MustQuery(&customOrder)
+	t.String("custom order struct", fmt.Sprintf("%+v", customOrder), "{Status:new Id:1 FieldInJsonb:yes}")
 
 	var firstOrder order
 	err = model.Find().OrderBy("created_at ASC").Limit(1).Query(&firstOrder) // "LIMIT 1" only necessary for gopg
