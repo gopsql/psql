@@ -56,6 +56,7 @@ type (
 		sqlConditions
 		sqlHavings
 		fields  []string
+		join    string
 		groupBy string
 		orderBy string
 		limit   string
@@ -156,7 +157,11 @@ func (s SQL) AsDelete() *DeleteSQL {
 
 // Update SQL and values in the DeleteSQL object due to changes of conditions.
 func (s *SelectSQL) Reload() *SelectSQL {
-	sql := "SELECT " + strings.Join(s.fields, ", ") + " FROM " + s.model.tableName + s.where()
+	sql := "SELECT " + strings.Join(s.fields, ", ") + " FROM " + s.model.tableName
+	if s.join != "" {
+		sql += " " + s.join
+	}
+	sql += s.where()
 	if s.groupBy != "" {
 		sql += " GROUP BY " + s.groupBy + s.having()
 	}
@@ -290,6 +295,12 @@ func (s *SelectSQL) Offset(start interface{}) *SelectSQL {
 func (s *SelectSQL) Where(condition string, args ...interface{}) *SelectSQL {
 	s.conditions = append(s.conditions, condition)
 	s.args = append(s.args, args...)
+	return s.Reload()
+}
+
+// Adds join to SELECT statement.
+func (s *SelectSQL) Join(expression string) *SelectSQL {
+	s.join = expression
 	return s.Reload()
 }
 

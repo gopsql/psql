@@ -491,6 +491,11 @@ func (m Model) Select(fields ...string) *SelectSQL {
 	return m.newSelect(fields...).Reload()
 }
 
+// Create a SELECT query statement with joins.
+func (m Model) Join(expression string) *SelectSQL {
+	return m.newSelect().Join(expression)
+}
+
 // Create a SELECT query statement with condition.
 func (m Model) Where(condition string, args ...interface{}) *SelectSQL {
 	return m.newSelect().Where(condition, args...)
