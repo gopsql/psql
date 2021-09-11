@@ -3,6 +3,8 @@
 **gopsql** is a simple tool to make PostgreSQL database queries, especially for
 developing RESTful API with JSON. Some features are learned from Rails.
 
+From [furk](https://github.com/caiguanhao/furk).
+
 ## Features
 
 - ✅ Model is a database table and it is created from struct. Column names are
@@ -89,6 +91,11 @@ make this benchmark chart. For more information, see
 // )
 m := psql.NewModel(Post{}, conn, logger.StandardLogger)
 ```
+
+Table name is inferred from the name of the struct, the tag of `__TABLE_NAME__`
+field or its `TableName() string` receiver. Column names are inferred from
+struct field names or theirs "column" tags. Both table names and field names
+are in snake case by default.
 
 ### Create Table
 
