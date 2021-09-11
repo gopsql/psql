@@ -246,9 +246,25 @@ func (s *SelectSQL) ResetSelect(expressions ...string) *SelectSQL {
 	return s.Reload()
 }
 
-// Add expressions to SELECT statement.
+// Add expressions to SELECT statement, before any existing jsonb columns.
 func (s *SelectSQL) Select(expressions ...string) *SelectSQL {
-	s.fields = append(s.fields, expressions...)
+	var idx int = -1
+	for _, column := range s.model.jsonbColumns {
+		for i, field := range s.fields {
+			if field != column {
+				continue
+			}
+			if idx == -1 || i < idx {
+				idx = i
+				break
+			}
+		}
+	}
+	if idx > -1 {
+		s.fields = append(append(append([]string{}, s.fields[:idx]...), expressions...), s.fields[idx:]...)
+	} else {
+		s.fields = append(s.fields, expressions...)
+	}
 	return s.Reload()
 }
 

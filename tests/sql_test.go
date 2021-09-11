@@ -372,10 +372,8 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.String("custom order struct", fmt.Sprintf("%+v", customOrder), "{Status:new Id:1 FieldInJsonb:yes}")
 
 	var firstOrder order
-	err = model.Find().OrderBy("created_at ASC").Limit(1).Query(&firstOrder) // "LIMIT 1" only necessary for gopg
-	if err != nil {
-		t.Fatal(err)
-	}
+	model.Find().OrderBy("created_at ASC").Limit(1).MustQuery(&firstOrder) // "LIMIT 1" only necessary for gopg
+
 	t.Int("order id", firstOrder.Id, 1)
 	t.String("order status", firstOrder.Status, "new")
 	t.String("order trade number", firstOrder.TradeNumber, tradeNo)
@@ -394,6 +392,14 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.String("order FieldInJsonb", firstOrder.FieldInJsonb, "yes")
 	t.String("order OtherJsonb", firstOrder.OtherJsonb, "no")
 	t.Int("order jsonbTest", firstOrder.jsonbTest, 123)
+
+	var customOrder2 struct {
+		order
+		CustomField int
+	}
+	model.Find().Select("123").OrderBy("created_at ASC").Limit(1).MustQuery(&customOrder2) // "LIMIT 1" only necessary for gopg
+	t.Int("order id", customOrder2.Id, 1)
+	t.Int("order custom field", customOrder2.CustomField, 123)
 
 	var c echoContext
 	changes, err := model.Permit().Bind(c, &firstOrder)
