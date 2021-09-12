@@ -89,7 +89,21 @@ type (
 	}
 
 	jsonbRaw map[string]json.RawMessage
+
+	fieldsFunc = func([]string, string) []string
 )
+
+// Can be used in Find(), add table name to all field names.
+var AddTableName fieldsFunc = func(fields []string, tableName string) (out []string) {
+	for _, field := range fields {
+		if strings.Contains(field, ".") {
+			out = append(out, field)
+			continue
+		}
+		out = append(out, tableName+"."+field)
+	}
+	return
+}
 
 func (j *jsonbRaw) Scan(src interface{}) error { // necessary for github.com/lib/pq
 	if src == nil {
@@ -172,7 +186,7 @@ func (s *SelectSQL) Reload() *SelectSQL {
 }
 
 // Create a SELECT query statement with all fields of a Model.
-func (s *SelectSQL) Find() *SelectSQL {
+func (s *SelectSQL) Find(options ...interface{}) *SelectSQL {
 	fields := []string{}
 	for _, field := range s.model.modelFields {
 		if field.Jsonb != "" {
@@ -182,6 +196,12 @@ func (s *SelectSQL) Find() *SelectSQL {
 	}
 	for _, jsonbField := range s.model.jsonbColumns {
 		fields = append(fields, jsonbField)
+	}
+	for _, opts := range options {
+		switch f := opts.(type) {
+		case fieldsFunc:
+			fields = f(fields, s.model.tableName)
+		}
 	}
 	return s.ResetSelect(fields...)
 }

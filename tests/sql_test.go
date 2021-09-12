@@ -420,7 +420,7 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.String("bind order trade number", firstOrder.TradeNumber, "")
 
 	var orders []order
-	err = model.Find().OrderBy("created_at DESC").Query(&orders)
+	err = model.Find(psql.AddTableName).OrderBy("created_at DESC").Query(&orders)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -470,8 +470,10 @@ func (m Model) newSelect(fields ...string) *SelectSQL {
 //  // put results into a struct
 //  var user models.User
 //  psql.NewModel(models.User{}, conn).Find().Where("id = $1", 1).MustQuery(&user)
-func (m Model) Find() *SelectSQL {
-	return m.newSelect().Find()
+// You can pass options to modify Find(). For example, Find(psql.AddTableName)
+// adds table name to every field.
+func (m Model) Find(options ...interface{}) *SelectSQL {
+	return m.newSelect().Find(options...)
 }
 
 // Select is like Find but can choose what columns to retrieve.

@@ -117,8 +117,10 @@ func TestModel(_t *testing.T) {
 	}
 	t.String(f.Name, "Name")
 	t.String(m1.Find().String(), "SELECT id, name, password FROM admins")
+	t.String(m1.Find(AddTableName).String(), "SELECT admins.id, admins.name, admins.password FROM admins")
 	t.String(m1.Find().Where("id = $1", 1).String(), "SELECT id, name, password FROM admins WHERE id = $1")
 	t.String(m1.Where("id = $1", 1).Find().String(), "SELECT id, name, password FROM admins WHERE id = $1")
+	t.String(m1.Where("id = $1", 1).Find(AddTableName).String(), "SELECT admins.id, admins.name, admins.password FROM admins WHERE id = $1")
 	t.String(m1.Select("id", "name").String(), "SELECT id, name FROM admins")
 	t.String(m1.Select("id", "name").Where("status = $1", "new").String(), "SELECT id, name FROM admins WHERE status = $1")
 	t.String(m1.Where("status = $1", "new").Select("id", "name").String(), "SELECT id, name FROM admins WHERE status = $1")
