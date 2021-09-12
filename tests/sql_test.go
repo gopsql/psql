@@ -504,6 +504,9 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	}
 	t.Int("rows count", count, 2)
 
+	count = model.MustCount("COUNT(*) * 11")
+	t.Int("rows count", count, 2*11)
+
 	var total string
 	model.Where("id > $1", 0).GroupBy("id").Select("sum(total_amount)::text").
 		Having("sum(total_amount) > $2", 1).MustQueryRow(&total)

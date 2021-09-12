@@ -528,8 +528,8 @@ func (m Model) Exists() (exists bool, err error) {
 }
 
 // MustCount is like Count but panics if count operation fails.
-func (m Model) MustCount() int {
-	count, err := m.Count()
+func (m Model) MustCount(optional ...string) int {
+	count, err := m.Count(optional...)
 	if err != nil {
 		panic(err)
 	}
@@ -537,8 +537,8 @@ func (m Model) MustCount() int {
 }
 
 // Create and execute a SELECT COUNT(*) statement, return number of rows.
-func (m Model) Count() (count int, err error) {
-	return m.newSelect().Count()
+func (m Model) Count(optional ...string) (count int, err error) {
+	return m.newSelect().Count(optional...)
 }
 
 // MustAssign is like Assign but panics if assign operation fails.

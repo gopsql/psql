@@ -226,8 +226,8 @@ func (s *SelectSQL) Exists() (exists bool, err error) {
 }
 
 // MustCount is like Count but panics if count operation fails.
-func (s *SelectSQL) MustCount() int {
-	count, err := s.Count()
+func (s *SelectSQL) MustCount(optional ...string) int {
+	count, err := s.Count(optional...)
 	if err != nil {
 		panic(err)
 	}
@@ -235,8 +235,15 @@ func (s *SelectSQL) MustCount() int {
 }
 
 // Create and execute a SELECT COUNT(*) statement, return number of rows.
-func (s *SelectSQL) Count() (count int, err error) {
-	err = s.ResetSelect("COUNT(*)").QueryRow(&count)
+// To count in a different way: Count("COUNT(DISTINCT authors.id)").
+func (s *SelectSQL) Count(optional ...string) (count int, err error) {
+	var expr string
+	if len(optional) > 0 && optional[0] != "" {
+		expr = optional[0]
+	} else {
+		expr = "COUNT(*)"
+	}
+	err = s.ResetSelect(expr).QueryRow(&count)
 	return
 }
 
