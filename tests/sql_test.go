@@ -60,6 +60,78 @@ type (
 		hashed string
 		clear  string
 	}
+
+	datatypes struct {
+		__TABLE_NAME__ string `datatypes`
+
+		Aa int8
+		Ba int16
+		Ca int32
+		Da int64
+		Ea int
+		Fa uint8
+		Ga uint16
+		Ha uint32
+		Ia uint64
+		Ja uint
+		Ka time.Time
+		La float32
+		Ma float64
+		Na decimal.Decimal
+		Oa bool
+		Pa string
+
+		Ab *int8
+		Bb *int16
+		Cb *int32
+		Db *int64
+		Eb *int
+		Fb *uint8
+		Gb *uint16
+		Hb *uint32
+		Ib *uint64
+		Jb *uint
+		Kb *time.Time
+		Lb *float32
+		Mb *float64
+		// Nb *decimal.Decimal // bug
+		Ob *bool
+		Pb *string
+
+		Ac []int8
+		Bc []int16
+		Cc []int32
+		Dc []int64
+		Ec []int
+		Fc []uint8
+		Gc []uint16
+		Hc []uint32
+		Ic []uint64
+		Jc []uint
+		Kc []time.Time
+		Lc []float32
+		Mc []float64
+		Nc []decimal.Decimal
+		Oc []bool
+		Pc []string
+
+		Ad *[]int8
+		Bd *[]int16
+		Cd *[]int32
+		Dd *[]int64
+		Ed *[]int
+		Fd *[]uint8
+		Gd *[]uint16
+		Hd *[]uint32
+		// Id *[]uint64 // bug
+		Jd *[]uint
+		Kd *[]time.Time
+		Ld *[]float32
+		Md *[]float64
+		Nd *[]decimal.Decimal
+		Od *[]bool
+		Pd *[]string
+	}
 )
 
 func (p password) String() string {
@@ -123,6 +195,19 @@ func init() {
 	if connStr == "" {
 		connStr = "postgres://localhost:5432/gopsqltests?sslmode=disable"
 	}
+}
+
+func TestDataTypes(t *testing.T) {
+	var x datatypes
+	conn := pgx.MustOpen(connStr)
+	m := psql.NewModel(x, conn, logger.StandardLogger)
+	m.NewSQL(m.DropSchema()).MustExecute()
+	m.NewSQL(m.Schema()).MustExecute()
+	m.NewSQL("INSERT INTO datatypes DEFAULT VALUES").MustExecute()
+	var y datatypes
+	m.Find().MustQuery(&y)
+	m.NewSQL(m.DropSchema()).MustExecute()
+	conn.Close()
 }
 
 func TestNewSQL(_t *testing.T) {

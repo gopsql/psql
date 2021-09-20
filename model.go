@@ -145,6 +145,7 @@ func (m Model) FieldByName(name string) *Field {
 //  	Id        int
 //  	Name      string
 //  	Age       *int
+//  	Numbers   []int
 //  	CreatedAt time.Time
 //  	DeletedAt *time.Time `dataType:"timestamptz"`
 //  	FullName  string     `jsonb:"meta"`
@@ -154,6 +155,7 @@ func (m Model) FieldByName(name string) *Field {
 //  //         id SERIAL PRIMARY KEY,
 //  //         name text DEFAULT ''::text NOT NULL,
 //  //         age bigint DEFAULT 0,
+//  //         numbers bigint[] DEFAULT '{}' NOT NULL,
 //  //         created_at timestamptz DEFAULT NOW() NOT NULL,
 //  //         deleted_at timestamptz,
 //  //         meta jsonb DEFAULT '{}'::jsonb NOT NULL
@@ -829,24 +831,42 @@ func parseStruct(obj interface{}) (fields []Field, jsonbColumns []string) {
 				tp = strings.TrimPrefix(tp, "*")
 				null = true
 			}
+			var isArray bool
+			if strings.HasPrefix(tp, "[]") {
+				tp = strings.TrimPrefix(tp, "[]")
+				isArray = true
+			}
 			if columnName == "id" && strings.Contains(tp, "int") {
 				dataType = "SERIAL PRIMARY KEY"
 			} else if jsonb == "" {
+				var defValue string
 				switch tp {
 				case "int8", "int16", "int32", "uint8", "uint16", "uint32":
-					dataType = "integer DEFAULT 0"
+					dataType = "integer"
+					defValue = "0"
 				case "int64", "uint64", "int", "uint":
-					dataType = "bigint DEFAULT 0"
+					dataType = "bigint"
+					defValue = "0"
 				case "time.Time":
-					dataType = "timestamptz DEFAULT NOW()"
+					dataType = "timestamptz"
+					defValue = "NOW()"
 				case "float32", "float64":
-					dataType = "numeric(10,2) DEFAULT 0.0"
+					dataType = "numeric(10,2)"
+					defValue = "0.0"
 				case "decimal.Decimal":
-					dataType = "numeric(10, 2) DEFAULT 0.0"
+					dataType = "numeric(10, 2)"
+					defValue = "0.0"
 				case "bool":
-					dataType = "boolean DEFAULT false"
+					dataType = "boolean"
+					defValue = "false"
 				default:
-					dataType = "text DEFAULT ''::text"
+					dataType = "text"
+					defValue = "''::text"
+				}
+				if isArray {
+					dataType += "[] DEFAULT '{}'"
+				} else {
+					dataType += " DEFAULT " + defValue
 				}
 				if !null {
 					dataType += " NOT NULL"
