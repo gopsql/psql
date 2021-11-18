@@ -185,7 +185,9 @@ func (s *SelectSQL) Reload() *SelectSQL {
 	return s
 }
 
-// Create a SELECT query statement with all fields of a Model.
+// Create a SELECT query statement with all fields of a Model. Options can be
+// funtions like AddTableName or strings like "--no-reset" (use Select instead
+// of ResetSelect).
 func (s *SelectSQL) Find(options ...interface{}) *SelectSQL {
 	fields := []string{}
 	for _, field := range s.model.modelFields {
@@ -197,11 +199,19 @@ func (s *SelectSQL) Find(options ...interface{}) *SelectSQL {
 	for _, jsonbField := range s.model.jsonbColumns {
 		fields = append(fields, jsonbField)
 	}
+	var noReset bool
 	for _, opts := range options {
 		switch f := opts.(type) {
 		case fieldsFunc:
 			fields = f(fields, s.model.tableName)
+		case string:
+			if f == "--no-reset" {
+				noReset = true
+			}
 		}
+	}
+	if noReset {
+		return s.Select(fields...)
 	}
 	return s.ResetSelect(fields...)
 }
