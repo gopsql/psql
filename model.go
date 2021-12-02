@@ -125,6 +125,43 @@ func (m Model) FieldByName(name string) *Field {
 	return nil
 }
 
+// Column names of the Model.
+func (m Model) Columns() []string {
+	columns := []string{}
+	for _, f := range m.modelFields {
+		if f.Jsonb != "" {
+			continue
+		}
+		columns = append(columns, f.ColumnName)
+	}
+	for _, jsonbField := range m.jsonbColumns {
+		columns = append(columns, jsonbField)
+	}
+	return columns
+}
+
+func (m Model) ColumnDataTypes() map[string]string {
+	dataTypes := map[string]string{}
+	jsonbDataType := map[string]string{}
+	for _, f := range m.modelFields {
+		if f.Jsonb != "" {
+			if _, ok := jsonbDataType[f.Jsonb]; !ok && f.DataType != "" {
+				jsonbDataType[f.Jsonb] = f.DataType
+			}
+			continue
+		}
+		dataTypes[f.ColumnName] = f.DataType
+	}
+	for _, jsonbField := range m.jsonbColumns {
+		dataType := jsonbDataType[jsonbField]
+		if dataType == "" {
+			dataType = "jsonb DEFAULT '{}'::jsonb NOT NULL"
+		}
+		dataTypes[jsonbField] = dataType
+	}
+	return dataTypes
+}
+
 // Generate CREATE TABLE SQL statement from a Model.
 //  | Go Type                                        | PostgreSQL Data Type |
 //  |------------------------------------------------|----------------------|
@@ -161,23 +198,11 @@ func (m Model) FieldByName(name string) *Field {
 //  //         meta jsonb DEFAULT '{}'::jsonb NOT NULL
 //  // );
 func (m Model) Schema() string {
+	columns := m.Columns()
+	dataTypes := m.ColumnDataTypes()
 	sql := []string{}
-	jsonbDataType := map[string]string{}
-	for _, f := range m.modelFields {
-		if f.Jsonb != "" {
-			if _, ok := jsonbDataType[f.Jsonb]; !ok && f.DataType != "" {
-				jsonbDataType[f.Jsonb] = f.DataType
-			}
-			continue
-		}
-		sql = append(sql, "\t"+f.ColumnName+" "+f.DataType)
-	}
-	for _, jsonbField := range m.jsonbColumns {
-		dataType := jsonbDataType[jsonbField]
-		if dataType == "" {
-			dataType = "jsonb DEFAULT '{}'::jsonb NOT NULL"
-		}
-		sql = append(sql, "\t"+jsonbField+" "+dataType)
+	for _, column := range columns {
+		sql = append(sql, "\t"+column+" "+dataTypes[column])
 	}
 	out := "CREATE TABLE " + m.tableName + " (\n" + strings.Join(sql, ",\n") + "\n);\n"
 	if m.structType != nil {
