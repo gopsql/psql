@@ -400,6 +400,18 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.String("struct string", fmt.Sprintf("%+v", id2structs[1]), "[{UserId:1 status:new} {UserId:0 status:new2}]")
 	// map[1:[{UserId:1 status:new} {UserId:0 status:new2}]]
 
+	var mapmap map[int]map[string]map[bool]int
+	model.NewSQL("SELECT 1, 's', true, 0 UNION SELECT 1, 's', false, 1").MustQuery(&mapmap)
+	t.String("struct string", fmt.Sprintf("%+v", mapmap), "map[1:map[s:map[false:1 true:0]]]")
+	model.NewSQL("SELECT 1, 't', false, 0").MustQuery(&mapmap)
+	t.String("struct string", fmt.Sprintf("%+v", mapmap), "map[1:map[s:map[false:1 true:0] t:map[false:0]]]")
+	var mapmapstruct map[int]map[bool]struct {
+		foo int
+		bar string
+	}
+	model.NewSQL("SELECT 1, false, 0, 'hello' UNION SELECT 1, true, 1, 'world'").MustQuery(&mapmapstruct)
+	t.String("struct string", fmt.Sprintf("%+v", mapmapstruct), "map[1:map[false:{foo:0 bar:hello} true:{foo:1 bar:world}]]")
+
 	// map[int][]interface{}: gopg returns error pg: Scan(nil)
 	// https://github.com/go-pg/pg/blob/v10.9.0/types/scan.go#L55
 	var id2strs map[int][3]string

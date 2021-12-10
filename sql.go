@@ -542,24 +542,29 @@ func (s SQL) Query(target interface{}) error {
 		}
 		mapKeyType, mapValueType := rt.Key(), rt.Elem()
 		isSlice := mapValueType.Kind() == reflect.Slice
-		if isSlice {
-			mapValueType = mapValueType.Elem()
-		}
+		valueTypes := mapValueTypes(rt)
 		for rows.Next() {
-			newMapKey := reflect.New(mapKeyType).Elem()
-			newMapVal := reflect.New(mapValueType).Elem()
-			dests := mapKeyValDests(newMapKey, newMapVal, columnLen)
+			mapKeys, end, dests := newDestsForMapType(mapKeyType, mapValueType, columnLen)
 			if err := rows.Scan(dests...); err != nil {
 				return err
 			}
 			if isSlice {
-				slice := rv.MapIndex(newMapKey)
+				slice := rv.MapIndex(mapKeys[0])
 				if !slice.IsValid() {
-					slice = reflect.MakeSlice(reflect.SliceOf(mapValueType), 0, 0)
+					slice = reflect.MakeSlice(valueTypes[0], 0, 0)
 				}
-				newMapVal = reflect.Append(slice, newMapVal)
+				rv.SetMapIndex(mapKeys[0], reflect.Append(slice, end))
+				continue
 			}
-			rv.SetMapIndex(newMapKey, newMapVal)
+			subMap := rv
+			i := 0
+			for ; i < len(mapKeys)-1; i++ { // map[type]map...
+				if !subMap.MapIndex(mapKeys[i]).IsValid() {
+					subMap.SetMapIndex(mapKeys[i], reflect.MakeMap(valueTypes[i]))
+				}
+				subMap = subMap.MapIndex(mapKeys[i])
+			}
+			subMap.SetMapIndex(mapKeys[i], end)
 		}
 		return rows.Err()
 	} else if kind != reflect.Slice {
@@ -848,32 +853,59 @@ func returnRowsAffected(dest []interface{}) func(db.Result, error) error {
 	}
 }
 
-func mapKeyValDests(newMapKey, newMapVal reflect.Value, columnLen int) (dests []interface{}) {
-	kt, vt := newMapKey.Type(), newMapVal.Type()
-	keySize := 0
-	switch newMapKey.Kind() {
+// Get all element types of a map recursively, for example:
+// mapValueTypes(reflect.TypeOf(map[string]map[int]map[bool]int{})) returns:
+// [ map[int]map[bool]int, map[bool]int, int ]
+func mapValueTypes(mapType reflect.Type) (types []reflect.Type) {
+	if mapType.Kind() != reflect.Map {
+		return
+	}
+	mapValueType := mapType.Elem()
+	types = append(types, mapValueType)
+	types = append(types, mapValueTypes(mapValueType)...)
+	return
+}
+
+// Make new destination pointers from map type for Scannable. The "end" is the
+// last non-map type value. Map keys are paths to the "end" value.
+func newDestsForMapType(mapKeyType, mapValueType reflect.Type, columnLen int) (mapKeys []reflect.Value, end reflect.Value, dests []interface{}) {
+	isSlice := mapValueType.Kind() == reflect.Slice
+	if isSlice {
+		mapValueType = mapValueType.Elem()
+	}
+	newMapKey := reflect.New(mapKeyType).Elem()
+	newMapVal := reflect.New(mapValueType).Elem()
+	switch mapKeyType.Kind() {
 	case reflect.Struct:
-		for i := 0; i < columnLen && i < kt.NumField(); i++ {
-			dests = append(dests, getAddrOfStructField(kt.Field(i), newMapKey.Field(i)))
-			keySize += 1
+		for i := 0; i < columnLen && i < mapKeyType.NumField(); i++ {
+			dests = append(dests, getAddrOfStructField(mapKeyType.Field(i), newMapKey.Field(i)))
 		}
 	case reflect.Array:
-		for i := 0; i < columnLen && i < kt.Len(); i++ {
+		for i := 0; i < columnLen && i < mapKeyType.Len(); i++ {
 			dests = append(dests, newMapKey.Index(i).Addr().Interface())
-			keySize += 1
 		}
 	default:
 		dests = append(dests, newMapKey.Addr().Interface())
-		keySize += 1
 	}
-	size := columnLen - keySize
-	switch newMapVal.Kind() {
+	mapKeys = append(mapKeys, newMapKey)
+	end = newMapVal
+	size := columnLen - len(dests)
+	switch mapValueType.Kind() {
 	case reflect.Struct:
 		for i := 0; i < size; i++ {
-			dests = append(dests, getAddrOfStructField(vt.Field(i), newMapVal.Field(i)))
+			dests = append(dests, getAddrOfStructField(mapValueType.Field(i), newMapVal.Field(i)))
 		}
+	case reflect.Map:
+		if isSlice {
+			// can't handle this kind of data structure at the moment
+			panic("sorry, but map[type][]map... is not yet supported")
+		}
+		k, e, d := newDestsForMapType(mapValueType.Key(), mapValueType.Elem(), size)
+		mapKeys = append(mapKeys, k...)
+		end = e
+		dests = append(dests, d...)
 	case reflect.Slice:
-		newMapVal.Set(reflect.MakeSlice(reflect.SliceOf(vt.Elem()), size, size))
+		newMapVal.Set(reflect.MakeSlice(reflect.SliceOf(mapValueType.Elem()), size, size))
 		fallthrough
 	case reflect.Array:
 		for i := 0; i < size; i++ {
