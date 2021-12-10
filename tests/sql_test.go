@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -362,6 +363,12 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.Int("statuses length", len(statuses), 2)
 	t.String("status 0", statuses[0], "new")
 	t.String("status 1", statuses[1], "new2")
+
+	var rvStatuses = reflect.ValueOf(&[]string{})
+	model.Select("status").MustQuery(rvStatuses)
+	t.Int("statuses length", rvStatuses.Elem().Len(), 2)
+	t.String("status 0", rvStatuses.Elem().Index(0).String(), "new")
+	t.String("status 1", rvStatuses.Elem().Index(1).String(), "new2")
 
 	var ids []int
 	model.Select("id").MustQuery(&ids)

@@ -19,7 +19,7 @@ const (
 )
 
 var (
-	ErrInvalidTarget       = errors.New("target must be pointer of a struct or pointer of a slice of structs")
+	ErrInvalidTarget       = errors.New("target must be pointer of a struct, slice or map")
 	ErrNoConnection        = errors.New("no connection")
 	ErrTypeAssertionFailed = errors.New("type assertion failed")
 )
@@ -502,11 +502,36 @@ func (s SQL) Query(target interface{}) error {
 		return ErrNoConnection
 	}
 
-	rt := reflect.TypeOf(target)
-	if rt.Kind() != reflect.Ptr {
-		return ErrInvalidTarget
+	var rv reflect.Value
+	var rt reflect.Type
+
+	targetIsRV := false
+	switch v := target.(type) {
+	case *reflect.Value:
+		rv = *v
+		targetIsRV = true
+	case reflect.Value:
+		rv = v
+		targetIsRV = true
 	}
-	rt = rt.Elem()
+
+	if targetIsRV {
+		rt = rv.Type()
+		if rt.Kind() == reflect.Ptr {
+			rv = reflect.Indirect(rv)
+			rt = rv.Type()
+		}
+		if !rv.CanAddr() {
+			return ErrInvalidTarget
+		}
+	} else {
+		rv = reflect.Indirect(reflect.ValueOf(target))
+		rt = reflect.TypeOf(target)
+		if rt.Kind() != reflect.Ptr {
+			return ErrInvalidTarget
+		}
+		rt = rt.Elem()
+	}
 
 	kind := rt.Kind()
 	if kind == reflect.Slice {
@@ -524,7 +549,6 @@ func (s SQL) Query(target interface{}) error {
 	}
 
 	if kind == reflect.Struct { // if target is not a slice, use QueryRow instead
-		rv := reflect.Indirect(reflect.ValueOf(target))
 		s.log(s.String(), s.values)
 		return mi.scan(rv, s.model.connection.QueryRow(s.String(), s.values...))
 	} else if kind == reflect.Map {
@@ -536,7 +560,6 @@ func (s SQL) Query(target interface{}) error {
 		defer rows.Close()
 		columns, _ := rows.Columns()
 		columnLen := len(columns)
-		rv := reflect.Indirect(reflect.ValueOf(target))
 		if rv.IsNil() {
 			rv.Set(reflect.MakeMapWithSize(rt, 0))
 		}
@@ -577,13 +600,12 @@ func (s SQL) Query(target interface{}) error {
 		return err
 	}
 	defer rows.Close()
-	v := reflect.Indirect(reflect.ValueOf(target))
 	for rows.Next() {
-		rv := reflect.New(rt).Elem()
-		if err := mi.scan(rv, rows); err != nil {
+		nv := reflect.New(rt).Elem()
+		if err := mi.scan(nv, rows); err != nil {
 			return err
 		}
-		v.Set(reflect.Append(v, rv))
+		rv.Set(reflect.Append(rv, nv))
 	}
 	return rows.Err()
 }
