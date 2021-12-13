@@ -531,8 +531,8 @@ func (m Model) Select(fields ...string) *SelectSQL {
 }
 
 // Create a SELECT query statement with joins.
-func (m Model) Join(expression string) *SelectSQL {
-	return m.newSelect().Join(expression)
+func (m Model) Join(expressions ...string) *SelectSQL {
+	return m.newSelect().Join(expressions...)
 }
 
 // Create a SELECT query statement with condition.

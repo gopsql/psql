@@ -351,9 +351,18 @@ func (s *SelectSQL) Where(condition string, args ...interface{}) *SelectSQL {
 	return s.Reload()
 }
 
+// Clears existing JOIN statements and set new JOIN statements.
+func (s *SelectSQL) ResetJoin(expressions ...string) *SelectSQL {
+	s.join = strings.Join(expressions, " ")
+	return s.Reload()
+}
+
 // Adds join to SELECT statement.
-func (s *SelectSQL) Join(expression string) *SelectSQL {
-	s.join = expression
+func (s *SelectSQL) Join(expressions ...string) *SelectSQL {
+	if s.join != "" && !strings.HasSuffix(s.join, " ") {
+		s.join += " "
+	}
+	s.join += strings.Join(expressions, " ")
 	return s.Reload()
 }
 

@@ -134,6 +134,11 @@ func TestModel(_t *testing.T) {
 	t.String(m1.Select("array_agg(id)").GroupBy("name", "status").String(), "SELECT array_agg(id) FROM admins GROUP BY name, status")
 	t.String(m1.Select("sum(price)").Where("id > $1", 1).GroupBy("kind").Having("sum(price) < $2", 3).String(),
 		"SELECT sum(price) FROM admins WHERE id > $1 GROUP BY kind HAVING sum(price) < $2")
+	t.String(m1.Select("id").Join("JOIN a ON a.id = admins.id").String(), "SELECT id FROM admins JOIN a ON a.id = admins.id")
+	t.String(m1.Select("id").Join("JOIN a ON a.id = admins.id").Join("JOIN b ON b.id = admins.id").String(),
+		"SELECT id FROM admins JOIN a ON a.id = admins.id JOIN b ON b.id = admins.id")
+	t.String(m1.Select("id").Join("JOIN a ON a.id = admins.id").ResetJoin("JOIN b ON b.id = admins.id").String(),
+		"SELECT id FROM admins JOIN b ON b.id = admins.id")
 	t.String(m1.Delete().String(), "DELETE FROM admins")
 	t.String(m1.Delete().Returning("id").String(), "DELETE FROM admins RETURNING id")
 	t.String(m1.Delete().Using("users", "orders").
