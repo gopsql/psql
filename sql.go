@@ -344,10 +344,15 @@ func (s *SelectSQL) Offset(start interface{}) *SelectSQL {
 	return s
 }
 
-// Adds condition to SELECT statement.
+// Adds condition to SELECT statement. Arguments should use positonal
+// parameters like $1, $2. If only one argument is provided, "$?" in the
+// condition will be replaced with the correct positonal parameter.
 func (s *SelectSQL) Where(condition string, args ...interface{}) *SelectSQL {
-	s.conditions = append(s.conditions, condition)
 	s.args = append(s.args, args...)
+	if len(args) == 1 {
+		condition = strings.Replace(condition, "$?", fmt.Sprintf("$%d", len(s.args)), -1)
+	}
+	s.conditions = append(s.conditions, condition)
 	return s.Reload()
 }
 
@@ -463,10 +468,15 @@ func (s *UpdateSQL) Returning(expressions ...string) *UpdateSQL {
 	return s
 }
 
-// Adds condition to UPDATE statement.
+// Adds condition to UPDATE statement. Arguments should use positonal
+// parameters like $1, $2. If only one argument is provided, "$?" in the
+// condition will be replaced with the correct positonal parameter.
 func (s *UpdateSQL) Where(condition string, args ...interface{}) *UpdateSQL {
-	s.conditions = append(s.conditions, condition)
 	s.args = append(s.args, args...)
+	if len(args) == 1 {
+		condition = strings.Replace(condition, "$?", fmt.Sprintf("$%d", len(s.args)), -1)
+	}
+	s.conditions = append(s.conditions, condition)
 	return s.Reload()
 }
 
@@ -486,10 +496,15 @@ func (s *UpdateSQL) String() string {
 	return sql
 }
 
-// Adds condition to DELETE FROM statement.
+// Adds condition to DELETE FROM statement. Arguments should use positonal
+// parameters like $1, $2. If only one argument is provided, "$?" in the
+// condition will be replaced with the correct positonal parameter.
 func (s *DeleteSQL) Where(condition string, args ...interface{}) *DeleteSQL {
-	s.conditions = append(s.conditions, condition)
 	s.args = append(s.args, args...)
+	if len(args) == 1 {
+		condition = strings.Replace(condition, "$?", fmt.Sprintf("$%d", len(s.args)), -1)
+	}
+	s.conditions = append(s.conditions, condition)
 	return s.Reload()
 }
 

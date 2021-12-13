@@ -535,7 +535,9 @@ func (m Model) Join(expressions ...string) *SelectSQL {
 	return m.newSelect().Join(expressions...)
 }
 
-// Create a SELECT query statement with condition.
+// Create a SELECT query statement with condition. Arguments should use
+// positonal parameters like $1, $2. If only one argument is provided, "$?" in
+// the condition will be replaced with the correct positonal parameter.
 func (m Model) Where(condition string, args ...interface{}) *SelectSQL {
 	return m.newSelect().Where(condition, args...)
 }
