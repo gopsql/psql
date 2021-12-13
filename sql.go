@@ -2,6 +2,7 @@ package psql
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -978,6 +979,12 @@ func newDestsForMapType(mapKeyType, mapValueType reflect.Type, columnLen int) (m
 	size := columnLen - len(dests)
 	switch mapValueType.Kind() {
 	case reflect.Struct:
+		if size == 1 {
+			if dest, ok := newMapVal.Addr().Interface().(sql.Scanner); ok {
+				dests = append(dests, dest)
+				return
+			}
+		}
 		for i := 0; i < size; i++ {
 			dests = append(dests, getAddrOfStructField(mapValueType.Field(i), newMapVal.Field(i)))
 		}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gopsql/db"
 	"github.com/gopsql/psql"
+	"github.com/shopspring/decimal"
 )
 
 func testQuery(_t *testing.T, conn db.DB) {
@@ -20,6 +21,7 @@ func testQuery(_t *testing.T, conn db.DB) {
 	}
 	check("SELECT 'a' UNION SELECT 'b'", &[]string{}, "[a b]")
 	check("SELECT 1 UNION SELECT 2", &[]int{}, "[1 2]")
+	check("SELECT 1, 1.23 UNION SELECT 2, 3.45", &map[int]decimal.Decimal{}, "map[1:1.23 2:3.45]")
 	check("SELECT 1, 'a' UNION SELECT 2, 'b'", &map[int]string{}, "map[1:a 2:b]")
 	check("SELECT 'a', 2 UNION SELECT 'b', 1", &map[string]int{}, "map[a:2 b:1]")
 	check("SELECT 1, 2, 'a', 'b' UNION SELECT 2, 3, 'c', 'd'", &map[int]struct {
