@@ -366,6 +366,14 @@ func (s *SelectSQL) Join(expressions ...string) *SelectSQL {
 	return s.Reload()
 }
 
+// Perform operations on the chain.
+func (s *SelectSQL) Tap(funcs ...func(*SelectSQL) *SelectSQL) *SelectSQL {
+	for i := range funcs {
+		s = funcs[i](s)
+	}
+	return s
+}
+
 func (s *SelectSQL) String() string {
 	sql := s.sql
 	if s.orderBy != "" {
@@ -416,6 +424,14 @@ func (s *InsertSQL) DoUpdateAll() *InsertSQL {
 	return s
 }
 
+// Perform operations on the chain.
+func (s *InsertSQL) Tap(funcs ...func(*InsertSQL) *InsertSQL) *InsertSQL {
+	for i := range funcs {
+		s = funcs[i](s)
+	}
+	return s
+}
+
 func (s InsertSQL) String() string {
 	sql := s.sql
 	if s.conflictTargets != nil && s.conflictActions != nil {
@@ -454,6 +470,14 @@ func (s *UpdateSQL) Where(condition string, args ...interface{}) *UpdateSQL {
 	return s.Reload()
 }
 
+// Perform operations on the chain.
+func (s *UpdateSQL) Tap(funcs ...func(*UpdateSQL) *UpdateSQL) *UpdateSQL {
+	for i := range funcs {
+		s = funcs[i](s)
+	}
+	return s
+}
+
 func (s *UpdateSQL) String() string {
 	sql := s.sql
 	if s.outputExpression != "" {
@@ -481,12 +505,28 @@ func (s *DeleteSQL) Returning(expressions ...string) *DeleteSQL {
 	return s
 }
 
+// Perform operations on the chain.
+func (s *DeleteSQL) Tap(funcs ...func(*DeleteSQL) *DeleteSQL) *DeleteSQL {
+	for i := range funcs {
+		s = funcs[i](s)
+	}
+	return s
+}
+
 func (s *DeleteSQL) String() string {
 	sql := s.sql
 	if s.outputExpression != "" {
 		sql += " RETURNING " + s.outputExpression
 	}
 	return sql
+}
+
+// Perform operations on the chain.
+func (s *SQL) Tap(funcs ...func(*SQL) *SQL) *SQL {
+	for i := range funcs {
+		s = funcs[i](s)
+	}
+	return s
 }
 
 func (s SQL) String() string {
