@@ -186,6 +186,10 @@ func TestModel(_t *testing.T) {
 		"UPDATE admins SET name = $3 WHERE (name = $1) AND (id = $2)")
 
 	m2 := NewModel(category{})
+	t.String(m2.Find().String(), "SELECT id, created_at, updated_at, meta FROM categories")
+	t.String(m2.Find().Select("id").String(), "SELECT id, created_at, updated_at, id, meta FROM categories")
+	t.String(m2.Find(AddTableName).Select("id").String(),
+		"SELECT categories.id, categories.created_at, categories.updated_at, id, categories.meta FROM categories")
 	t.String(m2.TypeName(), "category")
 	t.String(m2.tableName, "categories")
 	p = m2.Permit("Names", "Picture")

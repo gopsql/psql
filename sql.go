@@ -57,6 +57,7 @@ type (
 		sqlConditions
 		sqlHavings
 		fields  []string
+		jfCount int // jsonb fields count
 		join    string
 		groupBy string
 		orderBy string
@@ -197,8 +198,10 @@ func (s *SelectSQL) Find(options ...interface{}) *SelectSQL {
 		}
 		fields = append(fields, field.ColumnName)
 	}
+	s.jfCount = 0
 	for _, jsonbField := range s.model.jsonbColumns {
 		fields = append(fields, jsonbField)
+		s.jfCount += 1
 	}
 	var noReset bool
 	for _, opts := range options {
@@ -286,19 +289,8 @@ func (s *SelectSQL) ResetSelect(expressions ...string) *SelectSQL {
 
 // Add expressions to SELECT statement, before any existing jsonb columns.
 func (s *SelectSQL) Select(expressions ...string) *SelectSQL {
-	var idx int = -1
-	for _, column := range s.model.jsonbColumns {
-		for i, field := range s.fields {
-			if field != column {
-				continue
-			}
-			if idx == -1 || i < idx {
-				idx = i
-				break
-			}
-		}
-	}
-	if idx > -1 {
+	if s.jfCount > 0 {
+		idx := len(s.fields) - s.jfCount
 		s.fields = append(append(append([]string{}, s.fields[:idx]...), expressions...), s.fields[idx:]...)
 	} else {
 		s.fields = append(s.fields, expressions...)
