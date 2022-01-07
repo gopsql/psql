@@ -314,6 +314,8 @@ func testCRUD(_t *testing.T, conn db.DB) {
 		t.Fatal(err)
 	}
 	model := psql.NewModel(order{}, conn, logger.StandardLogger)
+	model.Insert().MustExecute() // noop, must not panic
+	model.Update().MustExecute() // noop, must not panic
 
 	var id int
 	err = model.Insert(

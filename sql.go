@@ -559,6 +559,11 @@ func (s SQL) Query(target interface{}) error {
 		return ErrNoConnection
 	}
 
+	sqlQuery := s.String()
+	if sqlQuery == "" {
+		return nil
+	}
+
 	var rv reflect.Value
 	var rt reflect.Type
 
@@ -606,11 +611,11 @@ func (s SQL) Query(target interface{}) error {
 	}
 
 	if kind == reflect.Struct { // if target is not a slice, use QueryRow instead
-		s.log(s.String(), s.values)
-		return mi.scan(rv, s.model.connection.QueryRow(s.String(), s.values...))
+		s.log(sqlQuery, s.values)
+		return mi.scan(rv, s.model.connection.QueryRow(sqlQuery, s.values...))
 	} else if kind == reflect.Map {
-		s.log(s.String(), s.values)
-		rows, err := s.model.connection.Query(s.String(), s.values...)
+		s.log(sqlQuery, s.values)
+		rows, err := s.model.connection.Query(sqlQuery, s.values...)
 		if err != nil {
 			return err
 		}
@@ -651,8 +656,8 @@ func (s SQL) Query(target interface{}) error {
 		return ErrInvalidTarget
 	}
 
-	s.log(s.String(), s.values)
-	rows, err := s.model.connection.Query(s.String(), s.values...)
+	s.log(sqlQuery, s.values)
+	rows, err := s.model.connection.Query(sqlQuery, s.values...)
 	if err != nil {
 		return err
 	}
@@ -782,8 +787,12 @@ func (s SQL) ExecTx(tx db.Tx, ctx context.Context, dest ...interface{}) (err err
 		err = ErrNoConnection
 		return
 	}
-	s.log(s.String(), s.values)
-	err = returnRowsAffected(dest)(tx.ExecContext(ctx, s.String(), s.values...))
+	sqlQuery := s.String()
+	if sqlQuery == "" {
+		return
+	}
+	s.log(sqlQuery, s.values)
+	err = returnRowsAffected(dest)(tx.ExecContext(ctx, sqlQuery, s.values...))
 	return
 }
 
@@ -793,8 +802,12 @@ func (s SQL) QueryTx(tx db.Tx, ctx context.Context, dest ...interface{}) (rows d
 		err = ErrNoConnection
 		return
 	}
-	s.log(s.String(), s.values)
-	rows, err = tx.QueryContext(ctx, s.String(), s.values...)
+	sqlQuery := s.String()
+	if sqlQuery == "" {
+		return
+	}
+	s.log(sqlQuery, s.values)
+	rows, err = tx.QueryContext(ctx, sqlQuery, s.values...)
 	return
 }
 
@@ -803,13 +816,17 @@ func (s SQL) execute(action int, txOpts *TxOptions, dest ...interface{}) (err er
 		err = ErrNoConnection
 		return
 	}
+	sqlQuery := s.String()
+	if sqlQuery == "" {
+		return
+	}
 	if txOpts == nil || (txOpts.Before == nil && txOpts.After == nil) {
-		s.log(s.String(), s.values)
+		s.log(sqlQuery, s.values)
 		if action == actionQueryRow {
-			err = s.model.connection.QueryRow(s.String(), s.values...).Scan(dest...)
+			err = s.model.connection.QueryRow(sqlQuery, s.values...).Scan(dest...)
 			return
 		}
-		err = returnRowsAffected(dest)(s.model.connection.Exec(s.String(), s.values...))
+		err = returnRowsAffected(dest)(s.model.connection.Exec(sqlQuery, s.values...))
 		return
 	}
 	ctx := context.Background()
@@ -838,11 +855,11 @@ func (s SQL) execute(action int, txOpts *TxOptions, dest ...interface{}) (err er
 			return
 		}
 	}
-	s.log(s.String(), s.values)
+	s.log(sqlQuery, s.values)
 	if action == actionQueryRow {
-		err = tx.QueryRowContext(ctx, s.String(), s.values...).Scan(dest...)
+		err = tx.QueryRowContext(ctx, sqlQuery, s.values...).Scan(dest...)
 	} else {
-		err = returnRowsAffected(dest)(tx.ExecContext(ctx, s.String(), s.values...))
+		err = returnRowsAffected(dest)(tx.ExecContext(ctx, sqlQuery, s.values...))
 	}
 	if err != nil {
 		return

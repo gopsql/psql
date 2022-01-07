@@ -663,7 +663,10 @@ func (m Model) Insert(lotsOfChanges ...interface{}) *InsertSQL {
 		values = append(values, string(j))
 		i += 1
 	}
-	sql := "INSERT INTO " + m.tableName + " (" + strings.Join(fields, ", ") + ") VALUES (" + strings.Join(numbers, ", ") + ")"
+	var sql string
+	if len(fields) > 0 {
+		sql = "INSERT INTO " + m.tableName + " (" + strings.Join(fields, ", ") + ") VALUES (" + strings.Join(numbers, ", ") + ")"
+	}
 	return m.NewSQL(sql, values...).AsInsert(fields...)
 }
 
@@ -719,7 +722,10 @@ func (s *UpdateSQL) Reload() *UpdateSQL {
 		}
 		fields = append(fields, jsonbField+" = "+field)
 	}
-	sql := "UPDATE " + s.model.tableName + " SET " + strings.Join(fields, ", ") + s.where()
+	var sql string
+	if len(fields) > 0 {
+		sql = "UPDATE " + s.model.tableName + " SET " + strings.Join(fields, ", ") + s.where()
+	}
 	n := s.model.NewSQL(sql, values...)
 	s.sql = n.sql
 	s.values = n.values
