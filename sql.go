@@ -5,18 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"reflect"
 	"strings"
 	"unsafe"
 
 	"github.com/gopsql/db"
-	"github.com/gopsql/logger"
-)
-
-const (
-	actionQueryRow = iota
-	actionExecute
 )
 
 var (
@@ -26,12 +19,6 @@ var (
 )
 
 type (
-	// TxOptions can be used in QueryRowInTransaction or ExecuteInTransaction
-	TxOptions struct {
-		IsolationLevel string
-		Before, After  func(context.Context, db.Tx) error
-	}
-
 	// SQL can be created with Model.NewSQL()
 	SQL struct {
 		main interface {
@@ -107,16 +94,30 @@ func (s SQL) MustQuery(target interface{}) {
 }
 
 // Query executes the SQL query and put the results into the target.
-// If Target must be a pointer to a struct, a slice or a map.
+// Target must be a pointer to a struct, a slice or a map.
 // For use cases, see Find() and Select().
 func (s SQL) Query(target interface{}) error {
-	if s.model.connection == nil {
-		return ErrNoConnection
-	}
+	return s.QueryCtxTx(context.Background(), nil, target)
+}
 
+// MustQueryCtxTx is like QueryCtxTx but panics if query operation fails.
+func (s SQL) MustQueryCtxTx(ctx context.Context, tx db.Tx, target interface{}) {
+	if err := s.QueryCtxTx(ctx, tx, target); err != nil {
+		panic(err)
+	}
+}
+
+// QueryCtxTx executes the SQL query and put the results into the target.
+// Target must be a pointer to a struct, a slice or a map.
+// For use cases, see Find() and Select().
+func (s SQL) QueryCtxTx(ctx context.Context, tx db.Tx, target interface{}) error {
 	sqlQuery := s.String()
 	if sqlQuery == "" {
 		return nil
+	}
+
+	if s.model.connection == nil {
+		return ErrNoConnection
 	}
 
 	var rv reflect.Value
@@ -167,13 +168,23 @@ func (s SQL) Query(target interface{}) error {
 
 	if kind == reflect.Struct { // if target is not a slice, use QueryRow instead
 		s.log(sqlQuery, s.values)
+		if tx != nil {
+			return mi.scan(rv, tx.QueryRowContext(ctx, sqlQuery, s.values...))
+		}
 		return mi.scan(rv, s.model.connection.QueryRow(sqlQuery, s.values...))
 	} else if kind == reflect.Map {
 		s.log(sqlQuery, s.values)
-		rows, err := s.model.connection.Query(sqlQuery, s.values...)
+		var rows db.Rows
+		var err error
+		if tx != nil {
+			rows, err = tx.QueryContext(ctx, sqlQuery, s.values...)
+		} else {
+			rows, err = s.model.connection.Query(sqlQuery, s.values...)
+		}
 		if err != nil {
 			return err
 		}
+
 		defer rows.Close()
 		columns, _ := rows.Columns()
 		columnLen := len(columns)
@@ -212,7 +223,13 @@ func (s SQL) Query(target interface{}) error {
 	}
 
 	s.log(sqlQuery, s.values)
-	rows, err := s.model.connection.Query(sqlQuery, s.values...)
+	var rows db.Rows
+	var err error
+	if tx != nil {
+		rows, err = tx.QueryContext(ctx, sqlQuery, s.values...)
+	} else {
+		rows, err = s.model.connection.Query(sqlQuery, s.values...)
+	}
 	if err != nil {
 		return err
 	}
@@ -287,22 +304,32 @@ func (s SQL) MustQueryRow(dest ...interface{}) {
 //  }
 //  psql.NewModelTable("users", conn).Select("name, id").MustQueryRow(&u.name, &u.id)
 func (s SQL) QueryRow(dest ...interface{}) error {
-	return s.QueryRowInTransaction(nil, dest...)
+	return s.QueryRowCtxTx(context.Background(), nil, dest...)
 }
 
-// MustQueryRowInTransaction is like QueryRowInTransaction but panics if query
-// row operation fails.
-func (s SQL) MustQueryRowInTransaction(txOpts *TxOptions, dest ...interface{}) {
-	if err := s.QueryRowInTransaction(txOpts, dest...); err != nil {
+// MustQueryRowCtxTx is like QueryRowCtxTx but panics if query row operation
+// fails.
+func (s SQL) MustQueryRowCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) {
+	if err := s.QueryRowCtxTx(ctx, tx, dest...); err != nil {
 		panic(err)
 	}
 }
 
-// QueryRowInTransaction is like QueryRow but executes the statement in a
-// transaction, you can define IsolationLevel and statements Before and/or
-// After it.
-func (s SQL) QueryRowInTransaction(txOpts *TxOptions, dest ...interface{}) error {
-	return s.execute(actionQueryRow, txOpts, dest...)
+// QueryRowCtxTx gets results from the first row, and put values of each column
+// to corresponding dest. For use cases, see Insert().
+func (s SQL) QueryRowCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) error {
+	sqlQuery := s.String()
+	if sqlQuery == "" {
+		return nil
+	}
+	if s.model.connection == nil {
+		return ErrNoConnection
+	}
+	s.log(sqlQuery, s.values)
+	if tx != nil {
+		return tx.QueryRowContext(ctx, sqlQuery, s.values...).Scan(dest...)
+	}
+	return s.model.connection.QueryRow(sqlQuery, s.values...).Scan(dest...)
 }
 
 // MustExecute is like Execute but panics if execute operation fails.
@@ -316,144 +343,36 @@ func (s SQL) MustExecute(dest ...interface{}) {
 // DELETE. You can get number of rows affected by providing pointer of int or
 // int64 to the optional dest. For use cases, see Update().
 func (s SQL) Execute(dest ...interface{}) error {
-	return s.ExecuteInTransaction(nil, dest...)
+	return s.ExecuteCtxTx(context.Background(), nil, dest...)
 }
 
-// MustExecuteInTransaction is like ExecuteInTransaction but panics if execute
-// operation fails.
-func (s SQL) MustExecuteInTransaction(txOpts *TxOptions, dest ...interface{}) {
-	if err := s.ExecuteInTransaction(txOpts, dest...); err != nil {
+// MustExecuteCtxTx is like ExecuteCtxTx but panics if execute operation fails.
+func (s SQL) MustExecuteCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) {
+	if err := s.ExecuteCtxTx(ctx, tx, dest...); err != nil {
 		panic(err)
 	}
 }
 
-// ExecuteInTransaction is like Execute but executes the statement in a
-// transaction, you can define IsolationLevel and statements Before and/or
-// After it.
-func (s SQL) ExecuteInTransaction(txOpts *TxOptions, dest ...interface{}) error {
-	return s.execute(actionExecute, txOpts, dest...)
-}
-
-// ExecTx executes a query in a transaction without returning any rows. You can
-// get number of rows affected by providing pointer of int or int64 to the
-// optional dest.
-func (s SQL) ExecTx(tx db.Tx, ctx context.Context, dest ...interface{}) (err error) {
-	if s.model.connection == nil {
-		err = ErrNoConnection
-		return
-	}
+// ExecuteCtxTx executes a query without returning any rows by an UPDATE,
+// INSERT, or DELETE. You can get number of rows affected by providing pointer
+// of int or int64 to the optional dest. For use cases, see Update().
+func (s SQL) ExecuteCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) error {
 	sqlQuery := s.String()
 	if sqlQuery == "" {
-		return
+		return nil
 	}
-	s.log(sqlQuery, s.values)
-	err = returnRowsAffected(dest)(tx.ExecContext(ctx, sqlQuery, s.values...))
-	return
-}
-
-// Query executes the SQL query and returns rows.
-func (s SQL) QueryTx(tx db.Tx, ctx context.Context, dest ...interface{}) (rows db.Rows, err error) {
 	if s.model.connection == nil {
-		err = ErrNoConnection
-		return
-	}
-	sqlQuery := s.String()
-	if sqlQuery == "" {
-		return
+		return ErrNoConnection
 	}
 	s.log(sqlQuery, s.values)
-	rows, err = tx.QueryContext(ctx, sqlQuery, s.values...)
-	return
-}
-
-func (s SQL) execute(action int, txOpts *TxOptions, dest ...interface{}) (err error) {
-	if s.model.connection == nil {
-		err = ErrNoConnection
-		return
+	if tx != nil {
+		return returnRowsAffected(dest)(tx.ExecContext(ctx, sqlQuery, s.values...))
 	}
-	sqlQuery := s.String()
-	if sqlQuery == "" {
-		return
-	}
-	if txOpts == nil || (txOpts.Before == nil && txOpts.After == nil) {
-		s.log(sqlQuery, s.values)
-		if action == actionQueryRow {
-			err = s.model.connection.QueryRow(sqlQuery, s.values...).Scan(dest...)
-			return
-		}
-		err = returnRowsAffected(dest)(s.model.connection.Exec(sqlQuery, s.values...))
-		return
-	}
-	ctx := context.Background()
-	s.log("BEGIN", nil)
-	var tx db.Tx
-	tx, err = s.model.connection.BeginTx(ctx, txOpts.IsolationLevel)
-	if err != nil {
-		return
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			s.log("ROLLBACK", nil)
-			tx.Rollback(ctx)
-			err = errors.New(fmt.Sprint(r))
-		} else if err != nil {
-			s.log("ROLLBACK", nil)
-			tx.Rollback(ctx)
-		} else {
-			s.log("COMMIT", nil)
-			err = tx.Commit(ctx)
-		}
-	}()
-	if txOpts.Before != nil {
-		err = txOpts.Before(ctx, tx)
-		if err != nil {
-			return
-		}
-	}
-	s.log(sqlQuery, s.values)
-	if action == actionQueryRow {
-		err = tx.QueryRowContext(ctx, sqlQuery, s.values...).Scan(dest...)
-	} else {
-		err = returnRowsAffected(dest)(tx.ExecContext(ctx, sqlQuery, s.values...))
-	}
-	if err != nil {
-		return
-	}
-	if txOpts.After != nil {
-		err = txOpts.After(ctx, tx)
-		if err != nil {
-			return
-		}
-	}
-	return
+	return returnRowsAffected(dest)(s.model.connection.Exec(sqlQuery, s.values...))
 }
 
 func (s SQL) log(sql string, args []interface{}) {
-	if s.model.logger == nil {
-		return
-	}
-	var prefix string
-	if idx := strings.Index(sql, " "); idx > -1 {
-		prefix = strings.ToUpper(sql[:idx])
-	} else {
-		prefix = strings.ToUpper(sql)
-	}
-	var colored logger.ColoredString
-	switch prefix {
-	case "DELETE", "DROP", "ROLLBACK":
-		colored = logger.RedString(sql)
-	case "INSERT", "CREATE", "COMMIT":
-		colored = logger.GreenString(sql)
-	case "UPDATE", "ALTER":
-		colored = logger.YellowString(sql)
-	default:
-		colored = logger.CyanString(sql)
-	}
-	if len(args) == 0 {
-		s.model.logger.Debug(colored)
-		return
-	}
-	s.model.logger.Debug(colored, args)
+	s.model.log(sql, args)
 }
 
 func returnRowsAffected(dest []interface{}) func(db.Result, error) error {

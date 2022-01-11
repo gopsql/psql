@@ -7,7 +7,7 @@ replace github.com/gopsql/psql => ../
 require (
 	github.com/go-pg/pg/v10 v10.9.0
 	github.com/gopsql/db v1.1.0
-	github.com/gopsql/gopg v1.1.0
+	github.com/gopsql/gopg v1.1.1
 	github.com/gopsql/logger v1.0.0
 	github.com/gopsql/pgx v1.1.0
 	github.com/gopsql/pq v1.1.0

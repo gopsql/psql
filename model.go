@@ -336,6 +336,34 @@ func (m Model) Assign(target interface{}, lotsOfChanges ...interface{}) (out []i
 	return
 }
 
+func (m Model) log(sql string, args []interface{}) {
+	if m.logger == nil {
+		return
+	}
+	var prefix string
+	if idx := strings.Index(sql, " "); idx > -1 {
+		prefix = strings.ToUpper(sql[:idx])
+	} else {
+		prefix = strings.ToUpper(sql)
+	}
+	var colored logger.ColoredString
+	switch prefix {
+	case "DELETE", "DROP", "ROLLBACK":
+		colored = logger.RedString(sql)
+	case "INSERT", "CREATE", "COMMIT":
+		colored = logger.GreenString(sql)
+	case "UPDATE", "ALTER":
+		colored = logger.YellowString(sql)
+	default:
+		colored = logger.CyanString(sql)
+	}
+	if len(args) == 0 {
+		m.logger.Debug(colored)
+		return
+	}
+	m.logger.Debug(colored, args)
+}
+
 // parseStruct collects column names, json names and jsonb names
 func parseStruct(obj interface{}) (fields []Field, jsonbColumns []string) {
 	var rt reflect.Type

@@ -492,26 +492,12 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.String("order FieldInJsonb", ao.FieldInJsonb, "red")
 	t.String("order OtherJsonb", ao.OtherJsonb, "blue")
 	var rowsAffected int
-	err = model.Update(achanges...).ExecuteInTransaction(&psql.TxOptions{
-		IsolationLevel: db.LevelSerializable,
-		Before: func(ctx context.Context, tx db.Tx) (err error) {
-			err = model.NewSQL(
-				"UPDATE "+model.TableName()+" SET user_id = user_id - $1",
-				23,
-			).ExecTx(tx, ctx)
-			return
-		},
-		After: func(ctx context.Context, tx db.Tx) (err error) {
-			err = model.NewSQL(
-				"UPDATE "+model.TableName()+" SET user_id = user_id + $1",
-				99,
-			).ExecTx(tx, ctx)
-			return
-		},
-	}, &rowsAffected)
-	if err != nil {
-		t.Fatal(err)
-	}
+	model.MustTransaction(func(ctx context.Context, tx db.Tx) error {
+		model.NewSQL("UPDATE "+model.TableName()+" SET user_id = user_id - $1", 23).MustExecuteCtxTx(ctx, tx)
+		model.Update(achanges...).MustExecuteCtxTx(ctx, tx, &rowsAffected)
+		model.NewSQL("UPDATE "+model.TableName()+" SET user_id = user_id + $1", 99).MustExecuteCtxTx(ctx, tx)
+		return nil
+	})
 	t.Int("rows affected", rowsAffected, 2)
 
 	var secondOrder order

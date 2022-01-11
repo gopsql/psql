@@ -46,53 +46,21 @@ func ExampleGOPG() {
 	conn := gopg.MustOpen("postgres://localhost:5432/gopsqltests?sslmode=disable")
 	defer conn.Close()
 
+	var level string
 	var output0 string
-	output1 := map[int]string{}
+	var output1 map[int]string
 	var output2 []int
 
 	m := psql.NewModelTable("", conn, logger.StandardLogger)
-	m.NewSQL("SELECT current_database()").MustQueryRowInTransaction(&psql.TxOptions{
-		Before: func(ctx context.Context, tx db.Tx) (err error) {
-			// just like tx.ExecContext(ctx, ...)
-			err = m.NewSQL("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE").ExecTx(tx, ctx)
-			if err != nil {
-				return
-			}
-			var rows db.Rows
-			// just like tx.QueryContext(ctx, ...)
-			rows, err = m.NewSQL("SELECT s.a, chr(s.a) FROM generate_series(65,70) AS s(a)").QueryTx(tx, ctx)
-			if err != nil {
-				return err
-			}
-			defer rows.Close()
-			for rows.Next() {
-				var key int
-				var value string
-				if err = rows.Scan(&key, &value); err != nil {
-					return
-				}
-				output1[key] = value
-			}
-			err = rows.Err()
-			return
-		},
-		After: func(ctx context.Context, tx db.Tx) error {
-			// just like tx.QueryContext(ctx, ...)
-			rows, err := m.NewSQL("SELECT * FROM generate_series(11, 15)").QueryTx(tx, ctx)
-			if err != nil {
-				return err
-			}
-			defer rows.Close()
-			for rows.Next() {
-				var id int
-				if err := rows.Scan(&id); err != nil {
-					return err
-				}
-				output2 = append(output2, id)
-			}
-			return rows.Err()
-		},
-	}, &output0)
+	m.MustTransaction(func(ctx context.Context, tx db.Tx) error {
+		m.NewSQL("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE").MustExecuteCtxTx(ctx, tx)
+		m.NewSQL("SHOW TRANSACTION ISOLATION LEVEL").MustQueryRowCtxTx(ctx, tx, &level)
+		m.NewSQL("SELECT s.a, chr(s.a) FROM generate_series(65,70) AS s(a)").MustQueryCtxTx(ctx, tx, &output1)
+		m.NewSQL("SELECT current_database()").MustQueryRowCtxTx(ctx, tx, &output0)
+		m.NewSQL("SELECT * FROM generate_series(11, 15)").MustQueryCtxTx(ctx, tx, &output2)
+		return nil
+	})
+	fmt.Println("level:", level)
 	fmt.Println("output0:", output0)
 	fmt.Println("output1:", output1)
 	fmt.Println("output2:", output2)
@@ -102,6 +70,7 @@ func ExampleGOPG() {
 	fmt.Println("output3:", outpu3)
 
 	// Output:
+	// level: serializable
 	// output0: gopsqltests
 	// output1: map[65:A 66:B 67:C 68:D 69:E 70:F]
 	// output2: [11 12 13 14 15]
