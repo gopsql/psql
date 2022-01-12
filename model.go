@@ -38,6 +38,7 @@ type (
 	Field struct {
 		Name       string // struct field name
 		ColumnName string // column name (or jsonb key name) in database
+		ColumnType string // column type
 		JsonName   string // key name in json input and output
 		Jsonb      string // jsonb column name in database
 		DataType   string // data type in database
@@ -129,17 +130,34 @@ func (m Model) Columns() []string {
 	return columns
 }
 
+type (
+	fieldDataTypeFunc func(fieldName, fieldType string) (dataType string)
+
+	hasFieldDataTypeFunc interface {
+		FieldDataType(fieldName, fieldType string) (dataType string)
+	}
+)
+
 func (m Model) ColumnDataTypes() map[string]string {
+	var dataTypeFunc fieldDataTypeFunc
+	if c, ok := m.connection.(hasFieldDataTypeFunc); ok {
+		dataTypeFunc = c.FieldDataType
+	} else {
+		dataTypeFunc = FieldDataType
+	}
 	dataTypes := map[string]string{}
 	jsonbDataType := map[string]string{}
 	for _, f := range m.modelFields {
+		dataType := f.DataType
 		if f.Jsonb != "" {
-			if _, ok := jsonbDataType[f.Jsonb]; !ok && f.DataType != "" {
-				jsonbDataType[f.Jsonb] = f.DataType
+			if _, ok := jsonbDataType[f.Jsonb]; !ok && dataType != "" {
+				jsonbDataType[f.Jsonb] = dataType
 			}
 			continue
 		}
-		dataTypes[f.ColumnName] = f.DataType
+		if dataType == "" {
+			dataTypes[f.ColumnName] = dataTypeFunc(f.ColumnName, f.ColumnType)
+		}
 	}
 	for _, jsonbField := range m.jsonbColumns {
 		dataType := jsonbDataType[jsonbField]
@@ -431,64 +449,14 @@ func parseStruct(obj interface{}) (fields []Field, jsonbColumns []string) {
 			}
 		}
 
-		dataType := f.Tag.Get("dataType")
-		if dataType == "" {
-			tp := f.Type.String()
-			var null bool
-			if strings.HasPrefix(tp, "*") {
-				tp = strings.TrimPrefix(tp, "*")
-				null = true
-			}
-			var isArray bool
-			if strings.HasPrefix(tp, "[]") {
-				tp = strings.TrimPrefix(tp, "[]")
-				isArray = true
-			}
-			if columnName == "id" && strings.Contains(tp, "int") {
-				dataType = "SERIAL PRIMARY KEY"
-			} else if jsonb == "" {
-				var defValue string
-				switch tp {
-				case "int8", "int16", "int32", "uint8", "uint16", "uint32":
-					dataType = "integer"
-					defValue = "0"
-				case "int64", "uint64", "int", "uint":
-					dataType = "bigint"
-					defValue = "0"
-				case "time.Time":
-					dataType = "timestamptz"
-					defValue = "NOW()"
-				case "float32", "float64":
-					dataType = "numeric(10,2)"
-					defValue = "0.0"
-				case "decimal.Decimal":
-					dataType = "numeric(10, 2)"
-					defValue = "0.0"
-				case "bool":
-					dataType = "boolean"
-					defValue = "false"
-				default:
-					dataType = "text"
-					defValue = "''::text"
-				}
-				if isArray {
-					dataType += "[] DEFAULT '{}'"
-				} else {
-					dataType += " DEFAULT " + defValue
-				}
-				if !null {
-					dataType += " NOT NULL"
-				}
-			}
-		}
-
 		fields = append(fields, Field{
 			Name:       f.Name,
 			Exported:   f.PkgPath == "",
 			ColumnName: columnName,
+			ColumnType: f.Type.String(),
 			JsonName:   jsonName,
 			Jsonb:      jsonb,
-			DataType:   dataType,
+			DataType:   f.Tag.Get("dataType"),
 		})
 	}
 	return

@@ -104,3 +104,57 @@ func addSegment(inrune, segment []rune) []rune { // from govalidator
 	inrune = append(inrune, segment...)
 	return inrune
 }
+
+// FieldDataType generates PostgreSQL data type based on struct's field name
+// and type.  This is default function used when calling ColumnDataTypes() or
+// Schema(). To use custom data type function, define "FieldDataType(fieldName,
+// fieldType string) (dataType string)" function for your connection.
+func FieldDataType(fieldName, fieldType string) (dataType string) {
+	if strings.ToLower(fieldName) == "id" && strings.Contains(fieldType, "int") {
+		dataType = "SERIAL PRIMARY KEY"
+		return
+	}
+	var null bool
+	if strings.HasPrefix(fieldType, "*") {
+		fieldType = strings.TrimPrefix(fieldType, "*")
+		null = true
+	}
+	var isArray bool
+	if strings.HasPrefix(fieldType, "[]") {
+		fieldType = strings.TrimPrefix(fieldType, "[]")
+		isArray = true
+	}
+	var defValue string
+	switch fieldType {
+	case "int8", "int16", "int32", "uint8", "uint16", "uint32":
+		dataType = "integer"
+		defValue = "0"
+	case "int64", "uint64", "int", "uint":
+		dataType = "bigint"
+		defValue = "0"
+	case "time.Time":
+		dataType = "timestamptz"
+		defValue = "NOW()"
+	case "float32", "float64":
+		dataType = "numeric(10, 2)"
+		defValue = "0.0"
+	case "decimal.Decimal":
+		dataType = "numeric(10, 2)"
+		defValue = "0.0"
+	case "bool":
+		dataType = "boolean"
+		defValue = "false"
+	default:
+		dataType = "text"
+		defValue = "''::text"
+	}
+	if isArray {
+		dataType += "[] DEFAULT '{}'"
+	} else {
+		dataType += " DEFAULT " + defValue
+	}
+	if !null {
+		dataType += " NOT NULL"
+	}
+	return
+}
