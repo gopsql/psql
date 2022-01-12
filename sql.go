@@ -100,6 +100,20 @@ func (s SQL) Query(target interface{}) error {
 	return s.QueryCtxTx(context.Background(), nil, target)
 }
 
+// MustQueryCtx is like QueryCtx but panics if query operation fails.
+func (s SQL) MustQueryCtx(ctx context.Context, target interface{}) {
+	if err := s.QueryCtx(ctx, target); err != nil {
+		panic(err)
+	}
+}
+
+// QueryCtx executes the SQL query and put the results into the target.
+// Target must be a pointer to a struct, a slice or a map.
+// For use cases, see Find() and Select().
+func (s SQL) QueryCtx(ctx context.Context, target interface{}) error {
+	return s.QueryCtxTx(ctx, nil, target)
+}
+
 // MustQueryCtxTx is like QueryCtxTx but panics if query operation fails.
 func (s SQL) MustQueryCtxTx(ctx context.Context, tx db.Tx, target interface{}) {
 	if err := s.QueryCtxTx(ctx, tx, target); err != nil {
@@ -171,7 +185,7 @@ func (s SQL) QueryCtxTx(ctx context.Context, tx db.Tx, target interface{}) error
 		if tx != nil {
 			return mi.scan(rv, tx.QueryRowContext(ctx, sqlQuery, s.values...))
 		}
-		return mi.scan(rv, s.model.connection.QueryRow(sqlQuery, s.values...))
+		return mi.scan(rv, s.model.connection.QueryRowContext(ctx, sqlQuery, s.values...))
 	} else if kind == reflect.Map {
 		s.log(sqlQuery, s.values)
 		var rows db.Rows
@@ -179,7 +193,7 @@ func (s SQL) QueryCtxTx(ctx context.Context, tx db.Tx, target interface{}) error
 		if tx != nil {
 			rows, err = tx.QueryContext(ctx, sqlQuery, s.values...)
 		} else {
-			rows, err = s.model.connection.Query(sqlQuery, s.values...)
+			rows, err = s.model.connection.QueryContext(ctx, sqlQuery, s.values...)
 		}
 		if err != nil {
 			return err
@@ -228,7 +242,7 @@ func (s SQL) QueryCtxTx(ctx context.Context, tx db.Tx, target interface{}) error
 	if tx != nil {
 		rows, err = tx.QueryContext(ctx, sqlQuery, s.values...)
 	} else {
-		rows, err = s.model.connection.Query(sqlQuery, s.values...)
+		rows, err = s.model.connection.QueryContext(ctx, sqlQuery, s.values...)
 	}
 	if err != nil {
 		return err
@@ -307,6 +321,19 @@ func (s SQL) QueryRow(dest ...interface{}) error {
 	return s.QueryRowCtxTx(context.Background(), nil, dest...)
 }
 
+// MustQueryRowCtx is like QueryRowCtx but panics if query row operation fails.
+func (s SQL) MustQueryRowCtx(ctx context.Context, dest ...interface{}) {
+	if err := s.QueryRowCtx(ctx, dest...); err != nil {
+		panic(err)
+	}
+}
+
+// QueryRowCtx gets results from the first row, and put values of each column
+// to corresponding dest. For use cases, see Insert().
+func (s SQL) QueryRowCtx(ctx context.Context, dest ...interface{}) error {
+	return s.QueryRowCtxTx(ctx, nil, dest...)
+}
+
 // MustQueryRowCtxTx is like QueryRowCtxTx but panics if query row operation
 // fails.
 func (s SQL) MustQueryRowCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) {
@@ -329,7 +356,7 @@ func (s SQL) QueryRowCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) e
 	if tx != nil {
 		return tx.QueryRowContext(ctx, sqlQuery, s.values...).Scan(dest...)
 	}
-	return s.model.connection.QueryRow(sqlQuery, s.values...).Scan(dest...)
+	return s.model.connection.QueryRowContext(ctx, sqlQuery, s.values...).Scan(dest...)
 }
 
 // MustExecute is like Execute but panics if execute operation fails.
@@ -344,6 +371,20 @@ func (s SQL) MustExecute(dest ...interface{}) {
 // int64 to the optional dest. For use cases, see Update().
 func (s SQL) Execute(dest ...interface{}) error {
 	return s.ExecuteCtxTx(context.Background(), nil, dest...)
+}
+
+// MustExecuteCtx is like ExecuteCtx but panics if execute operation fails.
+func (s SQL) MustExecuteCtx(ctx context.Context, dest ...interface{}) {
+	if err := s.ExecuteCtx(ctx, dest...); err != nil {
+		panic(err)
+	}
+}
+
+// ExecuteCtx executes a query without returning any rows by an UPDATE,
+// INSERT, or DELETE. You can get number of rows affected by providing pointer
+// of int or int64 to the optional dest. For use cases, see Update().
+func (s SQL) ExecuteCtx(ctx context.Context, dest ...interface{}) error {
+	return s.ExecuteCtxTx(ctx, nil, dest...)
 }
 
 // MustExecuteCtxTx is like ExecuteCtxTx but panics if execute operation fails.
@@ -368,7 +409,7 @@ func (s SQL) ExecuteCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) er
 	if tx != nil {
 		return returnRowsAffected(dest)(tx.ExecContext(ctx, sqlQuery, s.values...))
 	}
-	return returnRowsAffected(dest)(s.model.connection.Exec(sqlQuery, s.values...))
+	return returnRowsAffected(dest)(s.model.connection.ExecContext(ctx, sqlQuery, s.values...))
 }
 
 func (s SQL) log(sql string, args []interface{}) {

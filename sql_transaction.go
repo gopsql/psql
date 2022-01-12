@@ -36,7 +36,7 @@ func (m Model) MustTransactionCtx(ctx context.Context, block TransactionBlock) {
 func (m Model) TransactionCtx(ctx context.Context, block TransactionBlock) (err error) {
 	m.log("BEGIN", nil)
 	var tx db.Tx
-	tx, err = m.connection.BeginTx(ctx, "")
+	tx, err = m.connection.BeginTx(ctx, "", false)
 	if err != nil {
 		return
 	}

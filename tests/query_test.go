@@ -1,11 +1,17 @@
 package psql_test
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/gopsql/db"
+	"github.com/gopsql/gopg"
+	"github.com/gopsql/pgx"
 	"github.com/gopsql/psql"
 	"github.com/shopspring/decimal"
 )
@@ -13,6 +19,16 @@ import (
 func testQuery(_t *testing.T, conn db.DB) {
 	t := test{_t}
 	model := psql.NewModelTable("", conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	err := model.NewSQL("SELECT pg_sleep(1)").ExecuteCtx(ctx)
+	if _, ok := conn.(*gopg.DB); ok {
+		t.Bool("expect error to be timeout", os.IsTimeout(err))
+	} else if _, ok := conn.(*pgx.DB); ok {
+		t.Bool("expect error to context.DeadlineExceeded", errors.Is(err, context.DeadlineExceeded))
+	} else {
+		t.String("expect error: canceling statement due to user request", conn.ErrGetCode(err), "57014")
+	}
 	check := func(sql string, dest interface{}, expected string) {
 		rv := reflect.ValueOf(dest)
 		model.NewSQL(sql).MustQuery(&rv)
