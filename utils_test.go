@@ -40,15 +40,14 @@ func TestToTableName(t *testing.T) {
 	}
 }
 
-func TestToColumnName(t *testing.T) {
+func TestToUnderscore(t *testing.T) {
 	cases := [][]string{
 		{"column", "column"},
 		{"Column", "column"},
 		{"ColumnName", "column_name"},
-		{" GoodColumnName ", "good_column_name"},
 	}
 	for i, c := range cases {
-		got := psql.ToColumnName(c[0])
+		got := psql.ToUnderscore(c[0])
 		expected := c[1]
 		if got == expected {
 			t.Logf("case %d passed", i)

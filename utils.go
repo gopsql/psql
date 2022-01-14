@@ -7,33 +7,32 @@ import (
 )
 
 var (
-	// Function to convert a name to table or column name used in database,
-	// by default uses DefaultColumnizer which converts "CamelCase" to "snake_case".
-	Columnizer func(string) string = DefaultColumnizer
+	// DefaultColumnNamer is default column naming function used when
+	// calling NewModel. Default is null, which uses field name as column
+	// name.
+	DefaultColumnNamer func(string) string = nil
 
-	// Function to convert table name to its plural form.
-	// By default, table name uses plural form.
-	Pluralizer func(string) string = DefaultPluralizer
+	// DefaultColumnNamer is default table naming function used when
+	// calling NewModel. Default is ToPlural, which converts table name to
+	// its plural form.
+	DefaultTableNamer func(string) string = ToPlural
 )
 
 const (
 	tableNameField = "__TABLE_NAME__"
 )
 
-// Get table name from a struct. If a struct has "TableName() string" function,
-// then the return value of the function will be used. If a struct has a field
-// named "__TABLE_NAME__", then value of the field tag will be used. Otherwise,
-// the name of the struct will be used. If name is empty, "error_no_table_name"
+// ToTableName returns table name of a struct. If struct has "TableName()
+// string" receiver method, its return value is used. If name is empty and
+// struct has a __TABLE_NAME__ field, its tag value is used. If it is still
+// empty, struct's name is used. If name is still empty, "error_no_table_name"
 // is returned.
-// Examples:
-//  - type Product struct{}; func (_ Product) TableName() string { return "foobar" }; ToTableName(Product{}) == "foobar"
-//  - ToTableName(struct { __TABLE_NAME__ string `users` }{}) == "users"
-//  - type Product struct{}; ToTableName(Product{}) == "products"
-//  - ToTableName(struct{}{}) == "error_no_table_name"
 func ToTableName(object interface{}) (name string) {
-	if o, ok := object.(ModelWithTableName); ok {
+	if o, ok := object.(interface{ TableName() string }); ok {
 		name = o.TableName()
-		return
+		if name != "" {
+			return
+		}
 	}
 	rt := reflect.TypeOf(object)
 	if rt.Kind() == reflect.Ptr {
@@ -46,30 +45,24 @@ func ToTableName(object interface{}) (name string) {
 				return
 			}
 		}
-		name = ToColumnName(rt.Name())
+		name = rt.Name()
+		if DefaultTableNamer != nil {
+			name = DefaultTableNamer(name)
+		}
 	}
 	if name == "" { // anonymous struct has no name
 		return "error_no_table_name"
 	}
-	name = Pluralizer(name)
 	return
 }
 
-// Function to convert struct name to name used in database, using the Columnizer function.
-func ToColumnName(in string) string {
-	return Columnizer(strings.TrimSpace(in))
-}
-
-// Default function to convert "CamelCase" struct name to "snake_case" column
-// name used in database. For example, "FullName" will be converted to "full_name".
-func DefaultColumnizer(in string) string {
-	return camelCaseToUnderscore(in)
-}
-
-// Default function to convert a word to its plural form. Add "es" for "s" or "o" ending,
+// Convert a word to its plural form. Add "es" for "s" or "o" ending,
 // "y" ending will be replaced with "ies", for other endings, add "s".
 // For example, "product" will be converted to "products".
-func DefaultPluralizer(in string) string {
+func ToPlural(in string) string {
+	if in == "" {
+		return ""
+	}
 	if strings.HasSuffix(in, "y") {
 		return in[:len(in)-1] + "ies"
 	}
@@ -79,7 +72,15 @@ func DefaultPluralizer(in string) string {
 	return in + "s"
 }
 
-func camelCaseToUnderscore(str string) string { // from govalidator
+// Convert a "CamelCase" word to its plural "snake_case" (underscore) form.
+// For example, "PostComment" will be converted to "post_comments".
+func ToPluralUnderscore(in string) string {
+	return ToPlural(ToUnderscore(in))
+}
+
+// Convert "CamelCase" word to its "snake_case" (underscore) form. For example,
+// "FullName" will be converted to "full_name".
+func ToUnderscore(str string) string { // from govalidator
 	var output []rune
 	var segment []rune
 	for _, r := range str {

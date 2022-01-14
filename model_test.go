@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+func init() {
+	DefaultColumnNamer = ToUnderscore
+}
+
 type (
 	test struct {
 		*testing.T
@@ -46,19 +50,18 @@ type (
 func TestModel(_t *testing.T) {
 	t := test{_t, 0}
 
-	m0 := NewModelSlim(admin{})
-	t.String(m0.TypeName(), "admin")
-	t.String(m0.tableName, "admins")
-	t.Int(len(m0.modelFields), 0)
-	p := m0.Permit("Id")
-	t.Int(len(p.PermittedFields()), 0)
-
 	m1 := NewModel(admin{})
+	t.String(strings.Join(m1.Columns(), ","), "id,name,password")
+	t.String(m1.ToColumnName("FooBar"), "foo_bar")
+	m1.SetColumnNamer(nil)
+	t.String(strings.Join(m1.Columns(), ","), "Id,Name,Password")
+	t.String(m1.ToColumnName("FooBar"), "FooBar")
+	m1.SetColumnNamer(DefaultColumnNamer)
 	t.String(m1.FieldByName("Name").ColumnName, "name")
 	t.Nil(m1.FieldByName("name"), (*Field)(nil))
 	t.String(m1.tableName, "admins")
 	t.Int(len(m1.modelFields), 3)
-	p = m1.Permit()
+	p := m1.Permit()
 	t.Int(len(p.PermittedFields()), 0)
 	p = m1.Permit("Invalid")
 	t.Int(len(p.PermittedFields()), 0)

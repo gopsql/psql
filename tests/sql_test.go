@@ -23,6 +23,11 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+func init() {
+	psql.DefaultColumnNamer = psql.ToUnderscore
+	psql.DefaultTableNamer = psql.ToPluralUnderscore
+}
+
 type (
 	test struct {
 		*testing.T

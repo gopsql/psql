@@ -14,10 +14,16 @@ import (
 
 type (
 	// Model is a database table and it is created from struct. Table name
-	// is inferred from the name of the struct, the tag of __TABLE_NAME__
-	// field or its TableName() receiver. Column names are inferred from
-	// struct field names or theirs "column" tags. Both table names and
-	// field names are in snake_case by default.
+	// is inferred from struct's name, and converted to its the plural form
+	// using psql.TransformTableName by default. To use a different table
+	// name, define a __TABLE_NAME__ field in the struct and set the tag
+	// value as the table name, or add a "TableName() string" receiver
+	// method for the struct.
+	//
+	// Column names are inferred from struct field names. To use a
+	// different column name, set the "column" tag for the field, or use
+	// SetColumnNamer() to define column namer function to transform all
+	// field names in this model.
 	Model struct {
 		connection db.DB
 		logger     logger.Logger
@@ -26,13 +32,10 @@ type (
 	}
 
 	modelInfo struct {
+		columnNamer  func(string) string // defaults to DefaultColumnNamer
 		tableName    string
 		modelFields  []Field
 		jsonbColumns []string
-	}
-
-	ModelWithTableName interface {
-		TableName() string
 	}
 
 	Field struct {
@@ -52,22 +55,13 @@ var (
 
 // Initialize a Model from a struct. For available options, see SetOptions().
 func NewModel(object interface{}, options ...interface{}) (m *Model) {
-	m = NewModelSlim(object, options...)
-	m.modelFields, m.jsonbColumns = parseStruct(object)
-	return
-}
-
-// Initialize a Model from a struct without parsing fields of the struct.
-// Useful if you are calling functions that don't need fields, for example:
-//  psql.NewModelSlim(models.User{}, conn).MustCount()
-// For available options, see SetOptions().
-func NewModelSlim(object interface{}, options ...interface{}) (m *Model) {
 	m = &Model{
 		modelInfo: &modelInfo{
 			tableName: ToTableName(object),
 		},
 		structType: reflect.TypeOf(object),
 	}
+	m.SetColumnNamer(DefaultColumnNamer)
 	m.SetOptions(options...)
 	return
 }
@@ -83,6 +77,7 @@ func NewModelTable(tableName string, options ...interface{}) (m *Model) {
 		},
 		structType: nil,
 	}
+	m.SetColumnNamer(DefaultColumnNamer)
 	m.SetOptions(options...)
 	return
 }
@@ -92,7 +87,7 @@ func (m Model) String() string {
 		strconv.Itoa(len(m.modelFields)) + " modelFields"
 }
 
-// Table name of the Model (see ToTableName()).
+// Table name of the Model.
 func (m Model) TableName() string {
 	return m.tableName
 }
@@ -236,6 +231,7 @@ func (m *Model) Clone() *Model {
 		logger:     m.logger,
 		structType: m.structType,
 		modelInfo: &modelInfo{
+			columnNamer:  m.columnNamer,
 			tableName:    m.tableName,
 			modelFields:  m.modelFields,
 			jsonbColumns: m.jsonbColumns,
@@ -265,6 +261,13 @@ func (m *Model) SetOptions(options ...interface{}) *Model {
 // Return database connection for the Model.
 func (m *Model) Connection() db.DB {
 	return m.connection
+}
+
+// Change the column namer function for the Model.
+func (m *Model) SetColumnNamer(namer func(string) string) *Model {
+	m.setColumnNamer(namer)
+	m.updateColumnNames(m.structType)
+	return m
 }
 
 // Set a database connection for the Model. ErrNoConnection is returned if no
@@ -382,8 +385,27 @@ func (m Model) log(sql string, args []interface{}) {
 	m.logger.Debug(colored, args)
 }
 
+// Function to convert field name to name used in database.
+func (mi modelInfo) ToColumnName(in string) string {
+	if mi.columnNamer == nil {
+		return in
+	}
+	return mi.columnNamer(in)
+}
+
+func (mi *modelInfo) setColumnNamer(namer func(string) string) {
+	mi.columnNamer = namer
+}
+
+func (mi *modelInfo) updateColumnNames(structType reflect.Type) {
+	if structType == nil {
+		return
+	}
+	mi.modelFields, mi.jsonbColumns = mi.parseStruct(structType)
+}
+
 // parseStruct collects column names, json names and jsonb names
-func parseStruct(obj interface{}) (fields []Field, jsonbColumns []string) {
+func (mi *modelInfo) parseStruct(obj interface{}) (fields []Field, jsonbColumns []string) {
 	var rt reflect.Type
 	if o, ok := obj.(reflect.Type); ok {
 		rt = o
@@ -399,7 +421,7 @@ func parseStruct(obj interface{}) (fields []Field, jsonbColumns []string) {
 	for i := 0; i < rt.NumField(); i++ {
 		f := rt.Field(i)
 		if f.Anonymous {
-			f, j := parseStruct(f.Type)
+			f, j := mi.parseStruct(f.Type)
 			fields = append(fields, f...)
 			jsonbColumns = append(jsonbColumns, j...)
 			continue
@@ -416,7 +438,7 @@ func parseStruct(obj interface{}) (fields []Field, jsonbColumns []string) {
 			if f.PkgPath != "" {
 				continue // ignore unexported field if no column specified
 			}
-			columnName = ToColumnName(f.Name)
+			columnName = mi.ToColumnName(f.Name)
 		}
 
 		jsonName := f.Tag.Get("json")
@@ -435,7 +457,7 @@ func parseStruct(obj interface{}) (fields []Field, jsonbColumns []string) {
 		if idx := strings.Index(jsonb, ","); idx != -1 {
 			jsonb = jsonb[:idx]
 		}
-		jsonb = ToColumnName(jsonb)
+		jsonb = mi.ToColumnName(jsonb)
 		if jsonb != "" {
 			exists := false
 			for _, column := range jsonbColumns {

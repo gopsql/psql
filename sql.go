@@ -177,7 +177,8 @@ func (s SQL) QueryCtxTx(ctx context.Context, tx db.Tx, target interface{}) error
 	} else {
 		// different type of struct
 		mi = &modelInfo{tableName: s.model.tableName}
-		mi.modelFields, mi.jsonbColumns = parseStruct(rt)
+		mi.setColumnNamer(s.model.columnNamer)
+		mi.updateColumnNames(rt)
 	}
 
 	if kind == reflect.Struct { // if target is not a slice, use QueryRow instead
