@@ -25,9 +25,10 @@ type (
 	// SetColumnNamer() to define column namer function to transform all
 	// field names in this model.
 	Model struct {
-		connection db.DB
-		logger     logger.Logger
-		structType reflect.Type
+		connection         db.DB
+		logger             logger.Logger
+		structType         reflect.Type
+		structDataTypeFunc func(Model, string) string
 		*modelInfo
 	}
 
@@ -60,6 +61,9 @@ func NewModel(object interface{}, options ...interface{}) (m *Model) {
 			tableName: ToTableName(object),
 		},
 		structType: reflect.TypeOf(object),
+	}
+	if f, ok := object.(interface{ DataType(Model, string) string }); ok {
+		m.structDataTypeFunc = f.DataType
 	}
 	m.SetColumnNamer(DefaultColumnNamer)
 	m.SetOptions(options...)
@@ -134,25 +138,32 @@ type (
 )
 
 func (m Model) ColumnDataTypes() map[string]string {
-	var dataTypeFunc fieldDataTypeFunc
+	var dbDataTypeFunc fieldDataTypeFunc
 	if c, ok := m.connection.(hasFieldDataTypeFunc); ok {
-		dataTypeFunc = c.FieldDataType
+		dbDataTypeFunc = c.FieldDataType
 	} else {
-		dataTypeFunc = FieldDataType
+		dbDataTypeFunc = FieldDataType
 	}
 	dataTypes := map[string]string{}
 	jsonbDataType := map[string]string{}
 	for _, f := range m.modelFields {
-		dataType := f.DataType
 		if f.Jsonb != "" {
-			if _, ok := jsonbDataType[f.Jsonb]; !ok && dataType != "" {
-				jsonbDataType[f.Jsonb] = dataType
+			if _, ok := jsonbDataType[f.Jsonb]; !ok && f.DataType != "" {
+				jsonbDataType[f.Jsonb] = f.DataType
 			}
 			continue
 		}
-		if dataType == "" {
-			dataTypes[f.ColumnName] = dataTypeFunc(f.ColumnName, f.ColumnType)
+		if m.structDataTypeFunc != nil {
+			if dt := m.structDataTypeFunc(m, f.Name); dt != "" {
+				dataTypes[f.ColumnName] = dt
+				continue
+			}
 		}
+		if f.DataType != "" {
+			dataTypes[f.ColumnName] = f.DataType
+			continue
+		}
+		dataTypes[f.ColumnName] = dbDataTypeFunc(f.ColumnName, f.ColumnType)
 	}
 	for _, jsonbField := range m.jsonbColumns {
 		dataType := jsonbDataType[jsonbField]
@@ -211,9 +222,13 @@ func (m Model) Schema() string {
 		n := reflect.New(m.structType).Interface()
 		if a, ok := n.(interface{ BeforeCreateSchema() string }); ok {
 			out = a.BeforeCreateSchema() + "\n\n" + out
+		} else if a, ok := n.(interface{ BeforeCreateSchema(Model) string }); ok {
+			out = a.BeforeCreateSchema(m) + "\n\n" + out
 		}
 		if a, ok := n.(interface{ AfterCreateSchema() string }); ok {
 			out += "\n" + a.AfterCreateSchema() + "\n"
+		} else if a, ok := n.(interface{ AfterCreateSchema(Model) string }); ok {
+			out += "\n" + a.AfterCreateSchema(m) + "\n"
 		}
 	}
 	return out
@@ -227,9 +242,10 @@ func (m Model) DropSchema() string {
 // Clone returns a copy of the model.
 func (m *Model) Clone() *Model {
 	return &Model{
-		connection: m.connection,
-		logger:     m.logger,
-		structType: m.structType,
+		connection:         m.connection,
+		logger:             m.logger,
+		structType:         m.structType,
+		structDataTypeFunc: m.structDataTypeFunc,
 		modelInfo: &modelInfo{
 			columnNamer:  m.columnNamer,
 			tableName:    m.tableName,
@@ -418,6 +434,7 @@ func (mi *modelInfo) parseStruct(obj interface{}) (fields []Field, jsonbColumns 
 	if rt.Kind() != reflect.Struct {
 		return
 	}
+
 	for i := 0; i < rt.NumField(); i++ {
 		f := rt.Field(i)
 		if f.Anonymous {

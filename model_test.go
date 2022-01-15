@@ -284,6 +284,35 @@ func TestModel(_t *testing.T) {
 	t.Int(pp.Price, 100)
 }
 
+type (
+	dataTypeTest struct {
+		Test0 string
+		Test1 string
+		Test2 string `dataType:"test"`
+		Test3 string `dataType:"hello"`
+	}
+)
+
+func (dataTypeTest) DataType(m Model, fieldName string) string {
+	if fieldName == "Test1" {
+		return "foo"
+	}
+	if fieldName == "Test3" {
+		return "world"
+	}
+	return ""
+}
+
+func TestDataType(_t *testing.T) {
+	t := test{_t, 0}
+	m := NewModel(dataTypeTest{})
+	dataTypes := m.ColumnDataTypes()
+	t.String(dataTypes["test0"], "text DEFAULT ''::text NOT NULL")
+	t.String(dataTypes["test1"], "foo")
+	t.String(dataTypes["test2"], "test")
+	t.String(dataTypes["test3"], "world")
+}
+
 func (t *test) String(got, expected string) {
 	t.Helper()
 	if got == expected {
