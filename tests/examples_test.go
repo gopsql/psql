@@ -30,7 +30,7 @@ func ExamplePQ() {
 	if err != nil {
 		panic(err)
 	}
-	var conn db.DB = &standard.DB{c}
+	var conn db.DB = standard.NewDB("postgres", c)
 	defer conn.Close()
 	if err := c.Ping(); err != nil {
 		panic(err)
