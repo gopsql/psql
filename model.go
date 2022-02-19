@@ -255,6 +255,23 @@ func (m *Model) Clone() *Model {
 	}
 }
 
+// WithoutFields returns a copy of the model without given fields.
+func (m *Model) WithoutFields(fieldNames ...string) *Model {
+	cloned := m.Clone()
+	var fields []Field
+outer:
+	for _, f := range cloned.modelFields {
+		for _, name := range fieldNames {
+			if f.Name == name {
+				continue outer
+			}
+		}
+		fields = append(fields, f)
+	}
+	cloned.modelFields = fields
+	return cloned
+}
+
 // Quiet returns a copy of the model without logger.
 func (m *Model) Quiet() *Model {
 	return m.Clone().SetLogger(nil)
