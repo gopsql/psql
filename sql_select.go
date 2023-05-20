@@ -99,6 +99,10 @@ func (m Model) Where(condition string, args ...interface{}) *SelectSQL {
 	return m.newSelect().Where(condition, args...)
 }
 
+func (m Model) WHERE(args ...interface{}) *SelectSQL {
+	return m.newSelect().WHERE(args...)
+}
+
 // Update SQL and values in the DeleteSQL object due to changes of conditions.
 func (s *SelectSQL) Reload() *SelectSQL {
 	sql := "SELECT " + strings.Join(s.fields, ", ") + " FROM " + s.model.tableName
@@ -232,10 +236,15 @@ func (s *SelectSQL) GroupBy(expressions ...string) *SelectSQL {
 	return s.Reload()
 }
 
-// Adds HAVING to SELECT statement.
+// Adds HAVING to SELECT statement. Arguments should use positonal
+// parameters like $1, $2. If only one argument is provided, "$?" in the
+// condition will be replaced with the correct positonal parameter.
 func (s *SelectSQL) Having(condition string, args ...interface{}) *SelectSQL {
-	s.havings = append(s.havings, condition)
 	s.args = append(s.args, args...)
+	if len(args) == 1 {
+		condition = strings.Replace(condition, "$?", fmt.Sprintf("$%d", len(s.args)), -1)
+	}
+	s.havings = append(s.havings, condition)
 	return s.Reload()
 }
 
@@ -274,6 +283,34 @@ func (s *SelectSQL) Where(condition string, args ...interface{}) *SelectSQL {
 		condition = strings.Replace(condition, "$?", fmt.Sprintf("$%d", len(s.args)), -1)
 	}
 	s.conditions = append(s.conditions, condition)
+	return s.Reload()
+}
+
+// WHERE adds conditions to SELECT statement from variadic inputs.
+//
+// The args parameter contains field name, operator, value tuples with each
+// tuple consisting of three consecutive elements: the field name as a string,
+// an operator symbol as a string (e.g. "=", ">", "<="), and the value to match
+// against that field.
+//
+// To generate a WHERE clause matching multiple fields, use more than one
+// set of field/operator/value tuples in the args array.
+func (s *SelectSQL) WHERE(args ...interface{}) *SelectSQL {
+	for i := 0; i < len(args)/3; i++ {
+		var column string
+		if c, ok := args[i*3].(string); ok {
+			column = c
+		}
+		var operator string
+		if o, ok := args[i*3+1].(string); ok {
+			operator = o
+		}
+		if column == "" || operator == "" {
+			continue
+		}
+		s.args = append(s.args, args[i*3+2])
+		s.conditions = append(s.conditions, fmt.Sprintf("%s %s $%d", s.model.ToColumnName(column), operator, len(s.args)))
+	}
 	return s.Reload()
 }
 

@@ -106,6 +106,34 @@ func (s *UpdateSQL) Where(condition string, args ...interface{}) *UpdateSQL {
 	return s.Reload()
 }
 
+// WHERE adds conditions to UPDATE statement from variadic inputs.
+//
+// The args parameter contains field name, operator, value tuples with each
+// tuple consisting of three consecutive elements: the field name as a string,
+// an operator symbol as a string (e.g. "=", ">", "<="), and the value to match
+// against that field.
+//
+// To generate a WHERE clause matching multiple fields, use more than one
+// set of field/operator/value tuples in the args array.
+func (s *UpdateSQL) WHERE(args ...interface{}) *UpdateSQL {
+	for i := 0; i < len(args)/3; i++ {
+		var column string
+		if c, ok := args[i*3].(string); ok {
+			column = c
+		}
+		var operator string
+		if o, ok := args[i*3+1].(string); ok {
+			operator = o
+		}
+		if column == "" || operator == "" {
+			continue
+		}
+		s.args = append(s.args, args[i*3+2])
+		s.conditions = append(s.conditions, fmt.Sprintf("%s %s $%d", s.model.ToColumnName(column), operator, len(s.args)))
+	}
+	return s.Reload()
+}
+
 // Perform operations on the chain.
 func (s *UpdateSQL) Tap(funcs ...func(*UpdateSQL) *UpdateSQL) *UpdateSQL {
 	for i := range funcs {

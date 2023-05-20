@@ -138,7 +138,7 @@ func ExamplePost() {
 	n := m.Where("id > $1", 0).MustCount()
 	fmt.Println("count:", n)
 
-	e := m.Where("id = $1", newPostId).MustExists()
+	e := m.WHERE("id", "=", newPostId).MustExists()
 	fmt.Println("exists:", e)
 
 	c := m.MustCount()

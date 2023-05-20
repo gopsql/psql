@@ -130,6 +130,7 @@ m.Insert(
 ```go
 var firstPost Post
 m.Find().Where("id = $1", newPostId).MustQuery(&firstPost)
+// or: m.WHERE("id", "=", newPostId).Find().MustQuery(&firstPost)
 // or: m.Where("id = $1", newPostId).Find().MustQuery(&firstPost)
 // {1 2 hello world!}
 

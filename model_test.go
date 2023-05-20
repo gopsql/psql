@@ -128,7 +128,11 @@ func TestModel(_t *testing.T) {
 	t.String(m1.Find().Select("name").String(), "SELECT id, name, password, name FROM admins")
 	t.String(m1.Select("id").Where("id = $? AND id = $?", 1).String(), "SELECT id FROM admins WHERE id = $1 AND id = $1")
 	t.String(m1.Select("id").Where("id = $? AND id = $?", 1, 2).String(), "SELECT id FROM admins WHERE id = $? AND id = $?")
-	t.String(m1.Select("id").Where("id = $?", 1).Where("name = $?", "a").String(), "SELECT id FROM admins WHERE (id = $1) AND (name = $2)")
+	t.Strings(
+		m1.Select("id").Where("id = $?", 1).Where("name = $?", "a").String(),
+		m1.Select("id").WHERE("id", "=", 1, "name", "=", "a").String(),
+		"SELECT id FROM admins WHERE (id = $1) AND (name = $2)",
+	)
 	t.String(m1.Select("name").Find().String(), "SELECT id, name, password FROM admins")
 	t.String(m1.Select("name").Find("--no-reset").String(), "SELECT name, id, name, password FROM admins")
 	t.String(m1.Where("id = $1", 1).Find().String(), "SELECT id, name, password FROM admins WHERE id = $1")
@@ -141,8 +145,11 @@ func TestModel(_t *testing.T) {
 	t.String(m1.Select("id").OrderBy("id DESC").Limit(2).Limit(nil).String(), "SELECT id FROM admins ORDER BY id DESC")
 	t.String(m1.Select("id").Offset("10").Limit(2).String(), "SELECT id FROM admins LIMIT 2 OFFSET 10")
 	t.String(m1.Select("array_agg(id)").GroupBy("name", "status").String(), "SELECT array_agg(id) FROM admins GROUP BY name, status")
-	t.String(m1.Select("sum(price)").Where("id > $1", 1).GroupBy("kind").Having("sum(price) < $2", 3).String(),
-		"SELECT sum(price) FROM admins WHERE id > $1 GROUP BY kind HAVING sum(price) < $2")
+	t.Strings(
+		m1.Select("sum(price)").Where("id > $1", 1).GroupBy("kind").Having("sum(price) < $2", 3).String(),
+		m1.Select("sum(price)").WHERE("id", ">", 1).GroupBy("kind").Having("sum(price) < $?", 3).String(),
+		"SELECT sum(price) FROM admins WHERE id > $1 GROUP BY kind HAVING sum(price) < $2",
+	)
 	t.String(m1.Select("id").Join("JOIN a ON a.id = admins.id").String(), "SELECT id FROM admins JOIN a ON a.id = admins.id")
 	t.String(m1.Select("id").Join("JOIN a ON a.id = admins.id").Join("JOIN b ON b.id = admins.id").String(),
 		"SELECT id FROM admins JOIN a ON a.id = admins.id JOIN b ON b.id = admins.id")
@@ -155,10 +162,21 @@ func TestModel(_t *testing.T) {
 		Where("orders.name = $1", "foobar").Returning("admins.id").String(),
 		"DELETE FROM admins USING users, orders WHERE (admins.user_id = users.id) "+
 			"AND (admins.order_id = orders.id) AND (orders.name = $1) RETURNING admins.id")
-	t.String(m1.Where("id = $1", 1).Delete().String(), "DELETE FROM admins WHERE id = $1")
-	t.String(m1.Delete().Where("id = $1", 1).String(), "DELETE FROM admins WHERE id = $1")
-	t.String(m1.Delete().Where("id = $1", 1).Where("name = $2", "foobar").String(),
-		"DELETE FROM admins WHERE (id = $1) AND (name = $2)")
+	t.Strings(
+		m1.Where("id = $1", 1).Delete().String(),
+		m1.WHERE("id", "=", 1).Delete().String(),
+		"DELETE FROM admins WHERE id = $1",
+	)
+	t.Strings(
+		m1.Delete().Where("id = $1", 1).String(),
+		m1.Delete().WHERE("id", "=", 1).String(),
+		"DELETE FROM admins WHERE id = $1",
+	)
+	t.Strings(
+		m1.Delete().Where("id = $1", 1).Where("name = $2", "foobar").String(),
+		m1.Delete().WHERE("id", "=", 1, "name", "=", "foobar").String(),
+		"DELETE FROM admins WHERE (id = $1) AND (name = $2)",
+	)
 	t.String(m1.Insert(c).String(), "INSERT INTO admins (name) VALUES ($1)")
 	t.String(m1.Insert(c).Returning("id").String(), "INSERT INTO admins (name) VALUES ($1) RETURNING id")
 	t.String(m1.Insert(c).Returning("id AS foobar", "name").String(), "INSERT INTO admins (name) VALUES ($1) RETURNING id AS foobar, name")
@@ -188,8 +206,11 @@ func TestModel(_t *testing.T) {
 		"UPDATE admins SET name = $2 WHERE id = $1")
 	t.String(m1.Update(c).Where("id = $1", 1).String(),
 		"UPDATE admins SET name = $2 WHERE id = $1")
-	t.String(m1.Update(c).Where("name = $1", "foo").Where("id = $2", 1).String(),
-		"UPDATE admins SET name = $3 WHERE (name = $1) AND (id = $2)")
+	t.Strings(
+		m1.Update(c).Where("name = $1", "foo").Where("id = $2", 1).String(),
+		m1.Update(c).WHERE("name", "=", "foo", "id", "=", 1).String(),
+		"UPDATE admins SET name = $3 WHERE (name = $1) AND (id = $2)",
+	)
 
 	m2 := NewModel(category{})
 	t.String(m2.Find().String(), "SELECT id, created_at, updated_at, meta FROM categories")
@@ -322,6 +343,29 @@ func (t *test) String(got, expected string) {
 		t.Logf("case %d passed", t.i)
 	} else {
 		t.Errorf("case %d failed, got %s", t.i, got)
+	}
+	t.i++
+}
+
+func (t *test) Strings(inputs ...string) {
+	t.Helper()
+	if len(inputs) < 2 {
+		t.Error("inputs should have at least 2 strings")
+	}
+	expected := inputs[len(inputs)-1]
+	allEqual := true
+	var badActual string
+	for _, s := range inputs[:len(inputs)-1] {
+		if s != expected {
+			allEqual = false
+			badActual = s
+			break
+		}
+	}
+	if allEqual {
+		t.Logf("case %d passed", t.i)
+	} else {
+		t.Errorf("case %d failed, got %s", t.i, badActual)
 	}
 	t.i++
 }
