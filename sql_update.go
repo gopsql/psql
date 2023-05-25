@@ -114,7 +114,8 @@ func (s *UpdateSQL) Where(condition string, args ...interface{}) *UpdateSQL {
 // against that field.
 //
 // To generate a WHERE clause matching multiple fields, use more than one
-// set of field/operator/value tuples in the args array.
+// set of field/operator/value tuples in the args array. For example,
+// WHERE("A", "=", 1, "B", "!=", 2) means "WHERE (A = 1) AND (B != 2)".
 func (s *UpdateSQL) WHERE(args ...interface{}) *UpdateSQL {
 	for i := 0; i < len(args)/3; i++ {
 		var column string

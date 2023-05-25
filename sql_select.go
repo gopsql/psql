@@ -99,6 +99,16 @@ func (m Model) Where(condition string, args ...interface{}) *SelectSQL {
 	return m.newSelect().Where(condition, args...)
 }
 
+// Create a SELECT query statement with condition.
+//
+// The args parameter contains field name, operator, value tuples with each
+// tuple consisting of three consecutive elements: the field name as a string,
+// an operator symbol as a string (e.g. "=", ">", "<="), and the value to match
+// against that field.
+//
+// To generate a WHERE clause matching multiple fields, use more than one
+// set of field/operator/value tuples in the args array. For example,
+// WHERE("A", "=", 1, "B", "!=", 2) means "WHERE (A = 1) AND (B != 2)".
 func (m Model) WHERE(args ...interface{}) *SelectSQL {
 	return m.newSelect().WHERE(args...)
 }
@@ -294,7 +304,8 @@ func (s *SelectSQL) Where(condition string, args ...interface{}) *SelectSQL {
 // against that field.
 //
 // To generate a WHERE clause matching multiple fields, use more than one
-// set of field/operator/value tuples in the args array.
+// set of field/operator/value tuples in the args array. For example,
+// WHERE("A", "=", 1, "B", "!=", 2) means "WHERE (A = 1) AND (B != 2)".
 func (s *SelectSQL) WHERE(args ...interface{}) *SelectSQL {
 	for i := 0; i < len(args)/3; i++ {
 		var column string
