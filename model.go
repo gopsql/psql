@@ -86,6 +86,21 @@ func NewModelTable(tableName string, options ...interface{}) (m *Model) {
 	return
 }
 
+// New returns a reflect.Value representing a pointer to a new zero value for
+// model's struct type.
+func (m Model) New() reflect.Value {
+	return reflect.New(m.structType)
+}
+
+// NewSlice returns a reflect.Value representing a pointer to a new
+// zero-initialized slice value for model's struct type.
+func (m Model) NewSlice() reflect.Value {
+	slice := reflect.MakeSlice(reflect.SliceOf(m.structType), 0, 0)
+	ret := reflect.New(slice.Type())
+	ret.Elem().Set(slice)
+	return ret
+}
+
 func (m Model) String() string {
 	return `model (table: "` + m.tableName + `") has ` +
 		strconv.Itoa(len(m.modelFields)) + " modelFields"
@@ -219,7 +234,7 @@ func (m Model) Schema() string {
 	}
 	out := "CREATE TABLE " + m.tableName + " (\n" + strings.Join(sql, ",\n") + "\n);\n"
 	if m.structType != nil {
-		n := reflect.New(m.structType).Interface()
+		n := m.New().Interface()
 		if a, ok := n.(interface{ BeforeCreateSchema() string }); ok {
 			out = a.BeforeCreateSchema() + "\n\n" + out
 		} else if a, ok := n.(interface{ BeforeCreateSchema(Model) string }); ok {
