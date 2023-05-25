@@ -140,6 +140,9 @@ func (s InsertSQL) String() string {
 		if target != "" && !strings.HasPrefix(target, "(") {
 			target = "(" + target + ")"
 		}
+		if sql == "" {
+			return sql
+		}
 		if target == "" {
 			sql += " ON CONFLICT " + action
 		} else {
@@ -147,6 +150,9 @@ func (s InsertSQL) String() string {
 		}
 	}
 	if s.outputExpression != "" {
+		if sql == "" {
+			return sql
+		}
 		sql += " RETURNING " + s.outputExpression
 	}
 	return sql

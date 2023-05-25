@@ -15,6 +15,7 @@ import (
 var (
 	ErrInvalidTarget       = errors.New("target must be pointer of a struct, slice or map")
 	ErrNoConnection        = errors.New("no connection")
+	ErrNoSQL               = errors.New("no sql statements to execute")
 	ErrTypeAssertionFailed = errors.New("type assertion failed")
 )
 
@@ -401,7 +402,7 @@ func (s SQL) MustExecuteCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}
 func (s SQL) ExecuteCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) error {
 	sqlQuery := s.String()
 	if sqlQuery == "" {
-		return nil
+		return ErrNoSQL
 	}
 	if s.model.connection == nil {
 		return ErrNoConnection

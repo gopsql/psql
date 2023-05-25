@@ -319,8 +319,12 @@ func testCRUD(_t *testing.T, conn db.DB) {
 		t.Fatal(err)
 	}
 	model := psql.NewModel(order{}, conn, logger.StandardLogger)
-	model.Insert().MustExecute() // noop, must not panic
-	model.Update().MustExecute() // noop, must not panic
+	if model.Insert().Execute() != psql.ErrNoSQL {
+		t.Fatal("should have no sql to execute error")
+	}
+	if model.Update().Execute() != psql.ErrNoSQL {
+		t.Fatal("should have no sql to execute error")
+	}
 
 	var id int
 	err = model.Insert(
