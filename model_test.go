@@ -337,6 +337,50 @@ func TestDataType(_t *testing.T) {
 	t.String(dataTypes["test3"], "world")
 }
 
+type (
+	schema0Test struct {
+		Test0 string
+	}
+
+	schema1Test struct {
+		Test0 string
+	}
+
+	schema2Test struct {
+		Test0 string
+	}
+)
+
+func (schema1Test) Schema() string {
+	return `CREATE VIEW schema1Tests AS SELECT 'yes' AS test0;`
+}
+
+func (schema2Test) BeforeCreateSchema() string {
+	return `-- comment b`
+}
+
+func (schema2Test) AfterCreateSchema() string {
+	return `-- comment a`
+}
+
+func TestSchema(_t *testing.T) {
+	t := test{_t, 0}
+	t.String(NewModel(schema0Test{}).Schema(), `CREATE TABLE schema0Tests (
+	test0 text DEFAULT ''::text NOT NULL
+);
+`)
+	t.String(NewModel(schema1Test{}).Schema(), `CREATE VIEW schema1Tests AS SELECT 'yes' AS test0;
+`)
+	t.String(NewModel(schema2Test{}).Schema(), `-- comment b
+
+CREATE TABLE schema2Tests (
+	test0 text DEFAULT ''::text NOT NULL
+);
+
+-- comment a
+`)
+}
+
 func (t *test) String(got, expected string) {
 	t.Helper()
 	if got == expected {

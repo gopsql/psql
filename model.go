@@ -226,31 +226,42 @@ func (m Model) ColumnDataTypes() map[string]string {
 //  //         meta jsonb DEFAULT '{}'::jsonb NOT NULL
 //  // );
 func (m Model) Schema() string {
+	var before, after string
+	if m.structType != nil {
+		n := m.New().Interface()
+		if a, ok := n.(interface{ Schema() string }); ok {
+			return strings.TrimSpace(a.Schema()) + "\n"
+		}
+
+		if a, ok := n.(interface{ BeforeCreateSchema() string }); ok {
+			before = a.BeforeCreateSchema() + "\n\n"
+		} else if a, ok := n.(interface{ BeforeCreateSchema(Model) string }); ok {
+			before = a.BeforeCreateSchema(m) + "\n\n"
+		}
+
+		if a, ok := n.(interface{ AfterCreateSchema() string }); ok {
+			after = "\n" + a.AfterCreateSchema() + "\n"
+		} else if a, ok := n.(interface{ AfterCreateSchema(Model) string }); ok {
+			after = "\n" + a.AfterCreateSchema(m) + "\n"
+		}
+	}
 	columns := m.Columns()
 	dataTypes := m.ColumnDataTypes()
 	sql := []string{}
 	for _, column := range columns {
 		sql = append(sql, "\t"+column+" "+dataTypes[column])
 	}
-	out := "CREATE TABLE " + m.tableName + " (\n" + strings.Join(sql, ",\n") + "\n);\n"
-	if m.structType != nil {
-		n := m.New().Interface()
-		if a, ok := n.(interface{ BeforeCreateSchema() string }); ok {
-			out = a.BeforeCreateSchema() + "\n\n" + out
-		} else if a, ok := n.(interface{ BeforeCreateSchema(Model) string }); ok {
-			out = a.BeforeCreateSchema(m) + "\n\n" + out
-		}
-		if a, ok := n.(interface{ AfterCreateSchema() string }); ok {
-			out += "\n" + a.AfterCreateSchema() + "\n"
-		} else if a, ok := n.(interface{ AfterCreateSchema(Model) string }); ok {
-			out += "\n" + a.AfterCreateSchema(m) + "\n"
-		}
-	}
-	return out
+	return before + "CREATE TABLE " + m.tableName + " (\n" + strings.Join(sql, ",\n") + "\n);\n" + after
 }
 
 // Generate DROP TABLE ("DROP TABLE IF EXISTS <table_name>;") SQL statement from a Model.
 func (m Model) DropSchema() string {
+	if m.structType != nil {
+		n := m.New().Interface()
+		if a, ok := n.(interface{ DropSchema() string }); ok {
+			return strings.TrimSpace(a.DropSchema()) + "\n"
+		}
+	}
 	return "DROP TABLE IF EXISTS " + m.tableName + ";\n"
 }
 
