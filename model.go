@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/gopsql/db"
@@ -416,7 +417,7 @@ func (m Model) Assign(target interface{}, lotsOfChanges ...interface{}) (out []i
 	return
 }
 
-func (m Model) log(sql string, args []interface{}) {
+func (m Model) log(sql string, args []interface{}, elapsed time.Duration) {
 	if m.logger == nil {
 		return
 	}
@@ -437,11 +438,28 @@ func (m Model) log(sql string, args []interface{}) {
 	default:
 		colored = logger.CyanString(sql)
 	}
-	if len(args) == 0 {
-		m.logger.Debug(colored)
+	if elapsed == 0 {
+		if len(args) == 0 {
+			m.logger.Debug(colored)
+			return
+		}
+		m.logger.Debug(colored, args)
 		return
 	}
-	m.logger.Debug(colored, args)
+	var coloredElapsed logger.ColoredString
+	ms := elapsed.Milliseconds()
+	if ms > 1000 {
+		coloredElapsed = logger.RedString(elapsed.String())
+	} else if ms > 100 {
+		coloredElapsed = logger.YellowString(elapsed.String())
+	} else {
+		coloredElapsed = logger.GreenString(elapsed.String())
+	}
+	if len(args) == 0 {
+		m.logger.Debug(colored, coloredElapsed)
+		return
+	}
+	m.logger.Debug(colored, args, coloredElapsed)
 }
 
 // Function to convert field name to name used in database.

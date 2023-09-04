@@ -34,7 +34,7 @@ func (m Model) MustTransactionCtx(ctx context.Context, block TransactionBlock) {
 
 // TransactionCtx starts a transaction.
 func (m Model) TransactionCtx(ctx context.Context, block TransactionBlock) (err error) {
-	m.log("BEGIN", nil)
+	m.log("BEGIN", nil, 0)
 	var tx db.Tx
 	tx, err = m.connection.BeginTx(ctx, "", false)
 	if err != nil {
@@ -42,7 +42,7 @@ func (m Model) TransactionCtx(ctx context.Context, block TransactionBlock) (err 
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			m.log("ROLLBACK", nil)
+			m.log("ROLLBACK", nil, 0)
 			tx.Rollback(ctx)
 			if rerr, ok := r.(error); ok {
 				err = rerr
@@ -50,10 +50,10 @@ func (m Model) TransactionCtx(ctx context.Context, block TransactionBlock) (err 
 				err = errors.New(fmt.Sprint(r))
 			}
 		} else if err != nil {
-			m.log("ROLLBACK", nil)
+			m.log("ROLLBACK", nil, 0)
 			tx.Rollback(ctx)
 		} else {
-			m.log("COMMIT", nil)
+			m.log("COMMIT", nil, 0)
 			err = tx.Commit(ctx)
 		}
 	}()

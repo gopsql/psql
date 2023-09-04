@@ -7,6 +7,7 @@ import (
 	"errors"
 	"reflect"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/gopsql/db"
@@ -183,13 +184,15 @@ func (s SQL) QueryCtxTx(ctx context.Context, tx db.Tx, target interface{}) error
 	}
 
 	if kind == reflect.Struct { // if target is not a slice, use QueryRow instead
-		s.log(sqlQuery, s.values)
+		start := time.Now()
+		defer s.log(sqlQuery, s.values, start)
 		if tx != nil {
 			return mi.scan(rv, tx.QueryRowContext(ctx, sqlQuery, s.values...))
 		}
 		return mi.scan(rv, s.model.connection.QueryRowContext(ctx, sqlQuery, s.values...))
 	} else if kind == reflect.Map {
-		s.log(sqlQuery, s.values)
+		start := time.Now()
+		defer s.log(sqlQuery, s.values, start)
 		var rows db.Rows
 		var err error
 		if tx != nil {
@@ -238,7 +241,8 @@ func (s SQL) QueryCtxTx(ctx context.Context, tx db.Tx, target interface{}) error
 		return ErrInvalidTarget
 	}
 
-	s.log(sqlQuery, s.values)
+	start := time.Now()
+	defer s.log(sqlQuery, s.values, start)
 	var rows db.Rows
 	var err error
 	if tx != nil {
@@ -354,7 +358,8 @@ func (s SQL) QueryRowCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) e
 	if s.model.connection == nil {
 		return ErrNoConnection
 	}
-	s.log(sqlQuery, s.values)
+	start := time.Now()
+	defer s.log(sqlQuery, s.values, start)
 	if tx != nil {
 		return tx.QueryRowContext(ctx, sqlQuery, s.values...).Scan(dest...)
 	}
@@ -407,15 +412,16 @@ func (s SQL) ExecuteCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) er
 	if s.model.connection == nil {
 		return ErrNoConnection
 	}
-	s.log(sqlQuery, s.values)
+	start := time.Now()
+	defer s.log(sqlQuery, s.values, start)
 	if tx != nil {
 		return returnRowsAffected(dest)(tx.ExecContext(ctx, sqlQuery, s.values...))
 	}
 	return returnRowsAffected(dest)(s.model.connection.ExecContext(ctx, sqlQuery, s.values...))
 }
 
-func (s SQL) log(sql string, args []interface{}) {
-	s.model.log(sql, args)
+func (s SQL) log(sql string, args []interface{}, startTime time.Time) {
+	s.model.log(sql, args, time.Since(startTime))
 }
 
 func returnRowsAffected(dest []interface{}) func(db.Result, error) error {
