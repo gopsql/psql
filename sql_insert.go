@@ -119,6 +119,20 @@ func (s *InsertSQL) DoUpdateAll() *InsertSQL {
 	return s
 }
 
+// DoUpdateAllExcept is like DoUpdateAll but except some field names.
+func (s *InsertSQL) DoUpdateAllExcept(fields ...string) *InsertSQL {
+outer:
+	for _, field := range s.fields {
+		for _, f := range fields {
+			if f == field {
+				continue outer
+			}
+		}
+		s.conflictActions = append(s.conflictActions, field+" = EXCLUDED."+field)
+	}
+	return s
+}
+
 // Perform operations on the chain.
 func (s *InsertSQL) Tap(funcs ...func(*InsertSQL) *InsertSQL) *InsertSQL {
 	for i := range funcs {
