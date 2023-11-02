@@ -17,7 +17,7 @@ import (
 	"github.com/gopsql/gopg"
 	"github.com/gopsql/pgx"
 	"github.com/gopsql/pq"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
 )
 
@@ -109,7 +109,7 @@ func BenchmarkPQNative(b *testing.B) {
 }
 
 func BenchmarkPGXNative(b *testing.B) {
-	pool, err := pgxpool.Connect(context.Background(), dbConn)
+	pool, err := pgxpool.New(context.Background(), dbConn)
 	if err != nil {
 		panic(err)
 	}

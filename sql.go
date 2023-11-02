@@ -52,11 +52,14 @@ func (j *jsonbRaw) Scan(src interface{}) error { // necessary for github.com/lib
 	if src == nil {
 		return nil
 	}
-	source, ok := src.([]byte)
-	if !ok {
+	switch source := src.(type) {
+	case string:
+		return json.Unmarshal([]byte(source), j)
+	case []byte:
+		return json.Unmarshal(source, j)
+	default:
 		return ErrTypeAssertionFailed
 	}
-	return json.Unmarshal(source, j)
 }
 
 // Create new SQL with SQL statement as first argument, The rest
