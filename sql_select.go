@@ -240,6 +240,16 @@ func (s *SelectSQL) Select(expressions ...string) *SelectSQL {
 	return s.Reload()
 }
 
+// Replace old field names in existing SELECT statement with new.
+func (s *SelectSQL) ReplaceSelect(old, new string) *SelectSQL {
+	for i := range s.fields {
+		if s.fields[i] == old {
+			s.fields[i] = new
+		}
+	}
+	return s.Reload()
+}
+
 // Adds GROUP BY to SELECT statement.
 func (s *SelectSQL) GroupBy(expressions ...string) *SelectSQL {
 	s.groupBy = strings.Join(expressions, ", ")
