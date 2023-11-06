@@ -175,6 +175,9 @@ func (m Model) ColumnDataTypes() map[string]string {
 				continue
 			}
 		}
+		if f.DataType == "-" {
+			continue
+		}
 		if f.DataType != "" {
 			dataTypes[f.ColumnName] = f.DataType
 			continue
@@ -205,6 +208,7 @@ func (m Model) ColumnDataTypes() map[string]string {
 // or after this statement by defining "BeforeCreateSchema() string" (for
 // example the CREATE EXTENSION statement) or "AfterCreateSchema() string" (for
 // example the CREATE INDEX statement) function for the struct.
+// Set dataType to "-" to ignore this field in migration.
 //  psql.NewModel(struct {
 //  	__TABLE_NAME__ string `users`
 //
@@ -250,7 +254,9 @@ func (m Model) Schema() string {
 	dataTypes := m.ColumnDataTypes()
 	sql := []string{}
 	for _, column := range columns {
-		sql = append(sql, "\t"+column+" "+dataTypes[column])
+		if dataType, ok := dataTypes[column]; ok {
+			sql = append(sql, "\t"+column+" "+dataType)
+		}
 	}
 	return before + "CREATE TABLE " + m.tableName + " (\n" + strings.Join(sql, ",\n") + "\n);\n" + after
 }
