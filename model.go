@@ -48,6 +48,7 @@ type (
 		Jsonb      string // jsonb column name in database
 		DataType   string // data type in database
 		Exported   bool   // false if field name is lower case (unexported)
+		Strict     bool   // jsonb: raise json unmarshal error if set to true
 	}
 )
 
@@ -537,11 +538,9 @@ func (mi *modelInfo) parseStruct(obj interface{}) (fields []Field, jsonbColumns 
 			}
 		}
 
-		jsonb := f.Tag.Get("jsonb")
-		if idx := strings.Index(jsonb, ","); idx != -1 {
-			jsonb = jsonb[:idx]
-		}
-		jsonb = mi.ToColumnName(jsonb)
+		jsonbParts := strings.Split(f.Tag.Get("jsonb"), ",")
+		jsonb := mi.ToColumnName(jsonbParts[0])
+		strict := false
 		if jsonb != "" {
 			exists := false
 			for _, column := range jsonbColumns {
@@ -553,6 +552,11 @@ func (mi *modelInfo) parseStruct(obj interface{}) (fields []Field, jsonbColumns 
 			if !exists {
 				jsonbColumns = append(jsonbColumns, jsonb)
 			}
+			for _, option := range jsonbParts[1:] {
+				if option == "strict" {
+					strict = true
+				}
+			}
 		}
 
 		fields = append(fields, Field{
@@ -563,6 +567,7 @@ func (mi *modelInfo) parseStruct(obj interface{}) (fields []Field, jsonbColumns 
 			JsonName:   jsonName,
 			Jsonb:      jsonb,
 			DataType:   f.Tag.Get("dataType"),
+			Strict:     strict,
 		})
 	}
 	return

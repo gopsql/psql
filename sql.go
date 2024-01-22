@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -305,7 +306,10 @@ func (mi *modelInfo) scan(rv reflect.Value, scannable db.Scannable) error {
 			}
 			pointer := field.getFieldValueAddrFromStruct(rv)
 			if err := json.Unmarshal(val, pointer); err != nil {
-				return err
+				if field.Strict {
+					return fmt.Errorf("error unmarshaling field %s of %s: %v", field.ColumnName, field.Jsonb, err)
+				}
+				continue
 			}
 		}
 	}

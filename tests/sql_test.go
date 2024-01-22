@@ -60,6 +60,9 @@ type (
 		Sources3 struct {
 			Word string
 		} `jsonb:"meta3"`
+
+		NoError  int `column:"NoError" jsonb:"error"`
+		HasError int `column:"HasError" jsonb:"error,strict"`
 	}
 
 	password struct {
@@ -524,6 +527,13 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.String("order OtherJsonb", secondOrder.OtherJsonb, "blue")
 	var u int
 	t.Int("order user", secondOrder.UserId, u-23+99)
+
+	var testError order
+	model.Find().ReplaceSelect("error", `'{"NoError":"foo"}' AS error`).Where("id = $1", 2).MustQuery(&testError)
+	err = model.Find().ReplaceSelect("error", `'{"HasError":"foo"}' AS error`).Where("id = $1", 2).Query(&testError)
+	if !strings.Contains(err.Error(), "error unmarshaling field HasError of error") {
+		t.Fatal("expect error: error unmarshaling field", err)
+	}
 
 	count, err := model.Count()
 	if err != nil {
