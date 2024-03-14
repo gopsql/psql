@@ -92,6 +92,10 @@ func (s SQL) String() string {
 	return s.sql
 }
 
+func (s SQL) Values() []interface{} {
+	return s.values
+}
+
 // MustQuery is like Query but panics if query operation fails.
 func (s SQL) MustQuery(target interface{}) {
 	if err := s.Query(target); err != nil {
