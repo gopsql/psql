@@ -49,6 +49,7 @@ type (
 		DataType   string // data type in database
 		Exported   bool   // false if field name is lower case (unexported)
 		Strict     bool   // jsonb: raise json unmarshal error if set to true
+		Parent     string // parent struct name if anonymous is set
 	}
 )
 
@@ -294,6 +295,36 @@ func (m *Model) Clone() *Model {
 	}
 }
 
+// Fields returns field names of the Model. For JSONB fields, see JSONBFields().
+func (m Model) Fields() []string {
+	fields := []string{}
+	for _, field := range m.modelFields {
+		if field.Jsonb != "" {
+			continue
+		}
+		fields = append(fields, field.ColumnName)
+	}
+	return fields
+}
+
+// JSONBFields returns JSONB field names of the Model.
+func (m Model) JSONBFields() []string {
+	fields := []string{}
+	for _, jsonbField := range m.jsonbColumns {
+		fields = append(fields, jsonbField)
+	}
+	return fields
+}
+
+// AddTableName adds table name to fields.
+func (m Model) AddTableName(fields ...string) []string {
+	out := make([]string, len(fields))
+	for i, field := range fields {
+		out[i] = m.tableName + "." + field
+	}
+	return out
+}
+
 // WithoutFields returns a copy of the model without given fields.
 func (m *Model) WithoutFields(fieldNames ...string) *Model {
 	cloned := m.Clone()
@@ -491,11 +522,11 @@ func (mi *modelInfo) updateColumnNames(structType reflect.Type) {
 	if structType == nil {
 		return
 	}
-	mi.modelFields, mi.jsonbColumns = mi.parseStruct(structType)
+	mi.modelFields, mi.jsonbColumns = mi.parseStruct(structType, nil)
 }
 
 // parseStruct collects column names, json names and jsonb names
-func (mi *modelInfo) parseStruct(obj interface{}) (fields []Field, jsonbColumns []string) {
+func (mi *modelInfo) parseStruct(obj interface{}, parentColumnName *string) (fields []Field, jsonbColumns []string) {
 	var rt reflect.Type
 	if o, ok := obj.(reflect.Type); ok {
 		rt = o
@@ -511,25 +542,54 @@ func (mi *modelInfo) parseStruct(obj interface{}) (fields []Field, jsonbColumns 
 
 	for i := 0; i < rt.NumField(); i++ {
 		f := rt.Field(i)
+
 		if f.Anonymous {
-			f, j := mi.parseStruct(f.Type)
+			f, j := mi.parseStruct(f.Type, nil)
 			fields = append(fields, f...)
 			jsonbColumns = append(jsonbColumns, j...)
 			continue
 		}
 
-		columnName := f.Tag.Get("column")
+		exported := f.PkgPath == ""
+
+		columnParts := strings.Split(f.Tag.Get("column"), ",")
+		columnName := columnParts[0]
+
 		if columnName == "-" {
 			continue
 		}
-		if idx := strings.Index(columnName, ","); idx != -1 {
-			columnName = columnName[:idx]
+
+		anonymous := false
+		for _, option := range columnParts[1:] {
+			if option == "anonymous" {
+				anonymous = true
+			}
 		}
+
 		if columnName == "" {
-			if f.PkgPath != "" {
+			if !exported && anonymous == false {
 				continue // ignore unexported field if no column specified
 			}
 			columnName = mi.ToColumnName(f.Name)
+		}
+
+		if anonymous {
+			var parent string
+			if parentColumnName != nil {
+				parent = *parentColumnName + "." + columnName
+			} else {
+				parent = columnName
+			}
+			f, j := mi.parseStruct(f.Type, &parent)
+			for i := range f {
+				if f[i].Parent == "" {
+					f[i].Parent = parent
+				}
+				f[i].Exported = false // set to false in case any parent is unexported
+			}
+			fields = append(fields, f...)
+			jsonbColumns = append(jsonbColumns, j...)
+			continue
 		}
 
 		jsonName := f.Tag.Get("json")
@@ -567,7 +627,7 @@ func (mi *modelInfo) parseStruct(obj interface{}) (fields []Field, jsonbColumns 
 
 		fields = append(fields, Field{
 			Name:       f.Name,
-			Exported:   f.PkgPath == "",
+			Exported:   exported,
 			ColumnName: columnName,
 			ColumnType: f.Type.String(),
 			JsonName:   jsonName,
@@ -580,6 +640,14 @@ func (mi *modelInfo) parseStruct(obj interface{}) (fields []Field, jsonbColumns 
 }
 
 func (f Field) getFieldValueAddrFromStruct(structValue reflect.Value) interface{} {
+	if f.Parent != "" {
+		for _, parent := range strings.Split(f.Parent, ".") {
+			structValue = structValue.FieldByName(parent)
+			if structValue.Kind() == reflect.Ptr {
+				structValue = structValue.Elem()
+			}
+		}
+	}
 	value := structValue.FieldByName(f.Name)
 	if f.Exported {
 		return value.Addr().Interface()

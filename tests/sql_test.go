@@ -437,6 +437,34 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	t.String("order OtherJsonb", firstOrder.OtherJsonb, "no")
 	t.Int("order jsonbTest", firstOrder.jsonbTest, 123)
 
+	type nested struct {
+		number int `column:"number"`
+	}
+
+	type deep struct {
+		nested *nested `column:",anonymous"`
+	}
+
+	anonymous := struct {
+		id   int `column:"id"`
+		deep struct {
+			nested struct {
+				order order `column:",anonymous"`
+			} `column:",anonymous"`
+		} `column:",anonymous"`
+		deep2 *deep `column:",anonymous"`
+	}{
+		deep2: &deep{nested: &nested{}}, // pointer field should be initialized first
+	}
+	model.Select("1").
+		Select(model.AddTableName(model.Fields()...)...).
+		Select("2").
+		Select(model.AddTableName(model.JSONBFields()...)...). // jsonb fields should be placed at the end
+		Where("id = $1", 1).MustQuery(&anonymous)
+	t.Int("anonymous id", anonymous.id, 1)
+	t.Int("anonymous order id", anonymous.deep.nested.order.Id, 1)
+	t.Int("anonymous nested number", anonymous.deep2.nested.number, 2)
+
 	var customOrder2 struct {
 		order
 		CustomField int
