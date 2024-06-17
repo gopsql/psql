@@ -24,12 +24,13 @@ func (c Changes) String() string {
 }
 
 // Convert RawChanges to Changes. Keys are JSON key names. See FieldChanges().
-//  m := psql.NewModel(struct {
-//  	Age *int `json:"age"`
-//  }{})
-//  m.Changes(map[string]interface{}{
-//  	"age": 99,
-//  })
+//
+//	m := psql.NewModel(struct {
+//		Age *int `json:"age"`
+//	}{})
+//	m.Changes(map[string]interface{}{
+//		"age": 99,
+//	})
 func (m Model) Changes(in RawChanges) (out Changes) {
 	out = Changes{}
 	for _, field := range m.modelFields {

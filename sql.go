@@ -329,11 +329,12 @@ func (s SQL) MustQueryRow(dest ...interface{}) {
 
 // QueryRow gets results from the first row, and put values of each column to
 // corresponding dest. For use cases, see Insert().
-//  var u struct {
-//  	name string
-//  	id   int
-//  }
-//  psql.NewModelTable("users", conn).Select("name, id").MustQueryRow(&u.name, &u.id)
+//
+//	var u struct {
+//		name string
+//		id   int
+//	}
+//	psql.NewModelTable("users", conn).Select("name, id").MustQueryRow(&u.name, &u.id)
 func (s SQL) QueryRow(dest ...interface{}) error {
 	return s.QueryRowCtxTx(context.Background(), nil, dest...)
 }

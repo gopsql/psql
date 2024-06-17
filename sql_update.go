@@ -28,14 +28,13 @@ func (s SQL) AsUpdate(changes ...interface{}) *UpdateSQL {
 
 // Update builds an UPDATE statement with fields and values in the changes.
 //
-//  var rowsAffected int
-//  m.Update(changes...).Where("user_id = $1", 1).MustExecute(&rowsAffected)
+//	var rowsAffected int
+//	m.Update(changes...).Where("user_id = $1", 1).MustExecute(&rowsAffected)
 //
 // Changes can be a list of field name and value pairs and can also be obtained
 // from methods like Changes(), FieldChanges(), Assign(), Bind(), Filter().
 //
-//  m.Update("FieldA", 123, "FieldB", "other").MustExecute()
-//
+//	m.Update("FieldA", 123, "FieldB", "other").MustExecute()
 func (m Model) Update(lotsOfChanges ...interface{}) *UpdateSQL {
 	return m.NewSQL("").AsUpdate(lotsOfChanges...).Reload()
 }

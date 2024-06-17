@@ -74,7 +74,9 @@ func NewModel(object interface{}, options ...interface{}) (m *Model) {
 
 // Initialize a Model by defining table name only. Useful if you are calling
 // functions that don't need fields, for example:
-//  psql.NewModelTable("users", conn).MustCount()
+//
+//	psql.NewModelTable("users", conn).MustCount()
+//
 // For available options, see SetOptions().
 func NewModelTable(tableName string, options ...interface{}) (m *Model) {
 	m = &Model{
@@ -196,41 +198,44 @@ func (m Model) ColumnDataTypes() map[string]string {
 }
 
 // Generate CREATE TABLE SQL statement from a Model.
-//  | Go Type                                        | PostgreSQL Data Type |
-//  |------------------------------------------------|----------------------|
-//  | int8 / int16 / int32 / uint8 / uint16 / uint32 | integer              |
-//  | int64 / uint64 / int / uint                    | bigint               |
-//  | time.Time                                      | timestamptz          |
-//  | float32 / float64 / decimal.Decimal            | numeric              |
-//  | bool                                           | boolean              |
-//  | other                                          | text                 |
+//
+//	| Go Type                                        | PostgreSQL Data Type |
+//	|------------------------------------------------|----------------------|
+//	| int8 / int16 / int32 / uint8 / uint16 / uint32 | integer              |
+//	| int64 / uint64 / int / uint                    | bigint               |
+//	| time.Time                                      | timestamptz          |
+//	| float32 / float64 / decimal.Decimal            | numeric              |
+//	| bool                                           | boolean              |
+//	| other                                          | text                 |
+//
 // You can use "dataType" tag to customize the data type. "NOT NULL" is added
 // if the struct field is not a pointer. You can also set SQL statements before
 // or after this statement by defining "BeforeCreateSchema() string" (for
 // example the CREATE EXTENSION statement) or "AfterCreateSchema() string" (for
 // example the CREATE INDEX statement) function for the struct.
 // Set dataType to "-" to ignore this field in migration.
-//  psql.NewModel(struct {
-//  	__TABLE_NAME__ string `users`
 //
-//  	Id        int
-//  	Name      string
-//  	Age       *int
-//  	Numbers   []int
-//  	CreatedAt time.Time
-//  	DeletedAt *time.Time `dataType:"timestamptz"`
-//  	FullName  string     `jsonb:"meta"`
-//  	NickName  string     `jsonb:"meta"`
-//  }{}).Schema()
-//  // CREATE TABLE users (
-//  //         id SERIAL PRIMARY KEY,
-//  //         name text DEFAULT ''::text NOT NULL,
-//  //         age bigint DEFAULT 0,
-//  //         numbers bigint[] DEFAULT '{}' NOT NULL,
-//  //         created_at timestamptz DEFAULT NOW() NOT NULL,
-//  //         deleted_at timestamptz,
-//  //         meta jsonb DEFAULT '{}'::jsonb NOT NULL
-//  // );
+//	psql.NewModel(struct {
+//		__TABLE_NAME__ string `users`
+//
+//		Id        int
+//		Name      string
+//		Age       *int
+//		Numbers   []int
+//		CreatedAt time.Time
+//		DeletedAt *time.Time `dataType:"timestamptz"`
+//		FullName  string     `jsonb:"meta"`
+//		NickName  string     `jsonb:"meta"`
+//	}{}).Schema()
+//	// CREATE TABLE users (
+//	//         id SERIAL PRIMARY KEY,
+//	//         name text DEFAULT ''::text NOT NULL,
+//	//         age bigint DEFAULT 0,
+//	//         numbers bigint[] DEFAULT '{}' NOT NULL,
+//	//         created_at timestamptz DEFAULT NOW() NOT NULL,
+//	//         deleted_at timestamptz,
+//	//         meta jsonb DEFAULT '{}'::jsonb NOT NULL
+//	// );
 func (m Model) Schema() string {
 	var before, after string
 	if m.structType != nil {
@@ -392,20 +397,21 @@ func (m Model) MustAssign(i interface{}, lotsOfChanges ...interface{}) []interfa
 }
 
 // Assign changes to target object. Useful if you want to validate your struct.
-//  func create(c echo.Context) error {
-//  	var user models.User
-//  	m := psql.NewModel(user, conn)
-//  	changes := m.MustAssign(
-//  		&user,
-//  		m.Permit("Name").Filter(c.Request().Body),
-//  	)
-//  	if err := c.Validate(user); err != nil {
-//  		panic(err)
-//  	}
-//  	var id int
-//  	m.Insert(changes...).Returning("id").MustQueryRow(&id)
-//  	// ...
-//  }
+//
+//	func create(c echo.Context) error {
+//		var user models.User
+//		m := psql.NewModel(user, conn)
+//		changes := m.MustAssign(
+//			&user,
+//			m.Permit("Name").Filter(c.Request().Body),
+//		)
+//		if err := c.Validate(user); err != nil {
+//			panic(err)
+//		}
+//		var id int
+//		m.Insert(changes...).Returning("id").MustQueryRow(&id)
+//		// ...
+//	}
 func (m Model) Assign(target interface{}, lotsOfChanges ...interface{}) (out []interface{}, err error) {
 	rt := reflect.TypeOf(target)
 	if rt.Kind() != reflect.Ptr {

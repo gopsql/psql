@@ -70,17 +70,18 @@ func (m ModelWithPermittedFields) MustBind(ctx interface{ Bind(interface{}) erro
 
 // Bind data of permitted fields to target structure using echo.Context#Bind
 // function. The "target" must be a pointer to struct.
-//  // request with ?name=x&age=10
-//  func list(c echo.Context) error {
-//  	obj := struct {
-//  		Name string `query:"name"`
-//  		Age  int    `query:"age"`
-//  	}{}
-//  	m := psql.NewModel(obj)
-//  	fmt.Println(m.Permit("Name").Bind(c, &obj))
-//  	fmt.Println(obj) // "Name" is "x" and "Age" is 0 (default), because only "Name" is permitted to change
-//  	// ...
-//  }
+//
+//	// request with ?name=x&age=10
+//	func list(c echo.Context) error {
+//		obj := struct {
+//			Name string `query:"name"`
+//			Age  int    `query:"age"`
+//		}{}
+//		m := psql.NewModel(obj)
+//		fmt.Println(m.Permit("Name").Bind(c, &obj))
+//		fmt.Println(obj) // "Name" is "x" and "Age" is 0 (default), because only "Name" is permitted to change
+//		// ...
+//	}
 func (m ModelWithPermittedFields) Bind(ctx interface{ Bind(interface{}) error }, target interface{}) (Changes, error) {
 	rt := reflect.TypeOf(target)
 	if rt.Kind() != reflect.Ptr {
@@ -107,21 +108,22 @@ func (m ModelWithPermittedFields) Bind(ctx interface{ Bind(interface{}) error },
 // (string, []byte or io.Reader), their keys must be fields' JSON names. Input
 // can also be a struct. The "Changes" outputs can be arguments for Insert() or
 // Update().
-//  m := psql.NewModel(struct {
-//  	Age *int `json:"age"`
-//  }{})
-//  m.Permit("Age").Filter(
-//  	psql.RawChanges{
-//  		"age": 10,
-//  	},
-//  	map[string]interface{}{
-//  		"age": 20,
-//  	},
-//  	`{"age": 30}`,
-//  	[]byte(`{"age": 40}`),
-//  	strings.NewReader(`{"age": 50}`),
-//  	struct{ Age int }{60},
-//  ) // Age is 60
+//
+//	m := psql.NewModel(struct {
+//		Age *int `json:"age"`
+//	}{})
+//	m.Permit("Age").Filter(
+//		psql.RawChanges{
+//			"age": 10,
+//		},
+//		map[string]interface{}{
+//			"age": 20,
+//		},
+//		`{"age": 30}`,
+//		[]byte(`{"age": 40}`),
+//		strings.NewReader(`{"age": 50}`),
+//		struct{ Age int }{60},
+//	) // Age is 60
 func (m ModelWithPermittedFields) Filter(inputs ...interface{}) (out Changes) {
 	out = Changes{}
 	for _, input := range inputs {

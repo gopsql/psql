@@ -47,13 +47,15 @@ func (m Model) newSelect(fields ...string) *SelectSQL {
 // Create a SELECT query statement with all fields of a Model. If you want to
 // use other data type than the type of struct passed in NewModel(), see
 // Select().
-//  // put results into a slice
-//  var users []models.User
-//  psql.NewModel(models.User{}, conn).Find().MustQuery(&users)
 //
-//  // put results into a struct
-//  var user models.User
-//  psql.NewModel(models.User{}, conn).Find().Where("id = $1", 1).MustQuery(&user)
+//	// put results into a slice
+//	var users []models.User
+//	psql.NewModel(models.User{}, conn).Find().MustQuery(&users)
+//
+//	// put results into a struct
+//	var user models.User
+//	psql.NewModel(models.User{}, conn).Find().Where("id = $1", 1).MustQuery(&user)
+//
 // You can pass options to modify Find(). For example, Find(psql.AddTableName)
 // adds table name to every field.
 func (m Model) Find(options ...interface{}) *SelectSQL {
@@ -63,26 +65,30 @@ func (m Model) Find(options ...interface{}) *SelectSQL {
 // Select is like Find but can choose what columns to retrieve.
 //
 // To put results into a slice of strings:
-//  var names []string
-//  psql.NewModelTable("users", conn).Select("name").OrderBy("id ASC").MustQuery(&names)
+//
+//	var names []string
+//	psql.NewModelTable("users", conn).Select("name").OrderBy("id ASC").MustQuery(&names)
 //
 // To put results into a slice of custom struct:
-//  var users []struct {
-//  	name string
-//  	id   int
-//  }
-//  psql.NewModelTable("users", conn).Select("name", "id").OrderBy("id ASC").MustQuery(&users)
+//
+//	var users []struct {
+//		name string
+//		id   int
+//	}
+//	psql.NewModelTable("users", conn).Select("name", "id").OrderBy("id ASC").MustQuery(&users)
 //
 // To group results by the key:
-//  var id2name map[int]string
-//  psql.NewModelTable("users", conn).Select("id", "name").MustQuery(&id2name)
+//
+//	var id2name map[int]string
+//	psql.NewModelTable("users", conn).Select("id", "name").MustQuery(&id2name)
 //
 // If it is one-to-many, use slice as map's value:
-//  var users map[[2]string][]struct {
-//  	id   int
-//  	name string
-//  }
-//  psql.NewModelTable("users", conn).Select("country, city, id, name").MustQuery(&users)
+//
+//	var users map[[2]string][]struct {
+//		id   int
+//		name string
+//	}
+//	psql.NewModelTable("users", conn).Select("country, city, id, name").MustQuery(&users)
 func (m Model) Select(fields ...string) *SelectSQL {
 	return m.newSelect(fields...).Reload()
 }

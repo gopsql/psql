@@ -30,14 +30,13 @@ func (s SQL) AsInsert(fields ...string) *InsertSQL {
 // Insert builds an INSERT INTO statement with fields and values in the
 // changes.
 //
-//  var id int
-//  m.Insert(changes...).Returning("id").MustQueryRow(&id)
+//	var id int
+//	m.Insert(changes...).Returning("id").MustQueryRow(&id)
 //
 // Changes can be a list of field name and value pairs and can also be obtained
 // from methods like Changes(), FieldChanges(), Assign(), Bind(), Filter().
 //
-//  m.Insert("FieldA", 123, "FieldB", "other").MustExecute()
-//
+//	m.Insert("FieldA", 123, "FieldB", "other").MustExecute()
 func (m Model) Insert(lotsOfChanges ...interface{}) *InsertSQL {
 	fields := []string{}
 	fieldsIndex := map[string]int{}

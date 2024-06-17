@@ -27,8 +27,9 @@ func (s SQL) AsDelete() *DeleteSQL {
 // Delete builds a DELETE statement. You can add extra clause (like WHERE,
 // RETURNING) to the statement as the first argument. The rest arguments are
 // for any placeholder parameters in the statement.
-//  var ids []int
-//  psql.NewModelTable("reports", conn).Delete().Returning("id").MustQuery(&ids)
+//
+//	var ids []int
+//	psql.NewModelTable("reports", conn).Delete().Returning("id").MustQuery(&ids)
 func (m Model) Delete() *DeleteSQL {
 	return m.NewSQL("").AsDelete().Reload()
 }
