@@ -32,6 +32,8 @@ type (
 		values []interface{}
 	}
 
+	Tx = db.Tx
+
 	jsonbRaw map[string]json.RawMessage
 
 	fieldsFunc = func([]string, string) []string
@@ -125,7 +127,7 @@ func (s SQL) QueryCtx(ctx context.Context, target interface{}) error {
 }
 
 // MustQueryCtxTx is like QueryCtxTx but panics if query operation fails.
-func (s SQL) MustQueryCtxTx(ctx context.Context, tx db.Tx, target interface{}) {
+func (s SQL) MustQueryCtxTx(ctx context.Context, tx Tx, target interface{}) {
 	if err := s.QueryCtxTx(ctx, tx, target); err != nil {
 		panic(err)
 	}
@@ -134,7 +136,7 @@ func (s SQL) MustQueryCtxTx(ctx context.Context, tx db.Tx, target interface{}) {
 // QueryCtxTx executes the SQL query and put the results into the target.
 // Target must be a pointer to a struct, a slice or a map.
 // For use cases, see Find() and Select().
-func (s SQL) QueryCtxTx(ctx context.Context, tx db.Tx, target interface{}) error {
+func (s SQL) QueryCtxTx(ctx context.Context, tx Tx, target interface{}) error {
 	sqlQuery := s.String()
 	if sqlQuery == "" {
 		return nil
@@ -354,7 +356,7 @@ func (s SQL) QueryRowCtx(ctx context.Context, dest ...interface{}) error {
 
 // MustQueryRowCtxTx is like QueryRowCtxTx but panics if query row operation
 // fails.
-func (s SQL) MustQueryRowCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) {
+func (s SQL) MustQueryRowCtxTx(ctx context.Context, tx Tx, dest ...interface{}) {
 	if err := s.QueryRowCtxTx(ctx, tx, dest...); err != nil {
 		panic(err)
 	}
@@ -362,7 +364,7 @@ func (s SQL) MustQueryRowCtxTx(ctx context.Context, tx db.Tx, dest ...interface{
 
 // QueryRowCtxTx gets results from the first row, and put values of each column
 // to corresponding dest. For use cases, see Insert().
-func (s SQL) QueryRowCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) error {
+func (s SQL) QueryRowCtxTx(ctx context.Context, tx Tx, dest ...interface{}) error {
 	sqlQuery := s.String()
 	if sqlQuery == "" {
 		return nil
@@ -407,7 +409,7 @@ func (s SQL) ExecuteCtx(ctx context.Context, dest ...interface{}) error {
 }
 
 // MustExecuteCtxTx is like ExecuteCtxTx but panics if execute operation fails.
-func (s SQL) MustExecuteCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) {
+func (s SQL) MustExecuteCtxTx(ctx context.Context, tx Tx, dest ...interface{}) {
 	if err := s.ExecuteCtxTx(ctx, tx, dest...); err != nil {
 		panic(err)
 	}
@@ -416,7 +418,7 @@ func (s SQL) MustExecuteCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}
 // ExecuteCtxTx executes a query without returning any rows by an UPDATE,
 // INSERT, or DELETE. You can get number of rows affected by providing pointer
 // of int or int64 to the optional dest. For use cases, see Update().
-func (s SQL) ExecuteCtxTx(ctx context.Context, tx db.Tx, dest ...interface{}) error {
+func (s SQL) ExecuteCtxTx(ctx context.Context, tx Tx, dest ...interface{}) error {
 	sqlQuery := s.String()
 	if sqlQuery == "" {
 		return ErrNoSQL

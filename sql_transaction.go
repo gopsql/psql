@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"github.com/gopsql/db"
 )
 
 type (
-	TransactionBlock func(context.Context, db.Tx) error
+	TransactionBlock func(context.Context, Tx) error
 )
 
 // MustTransaction starts a transaction, uses context.Background() internally
@@ -35,7 +33,7 @@ func (m Model) MustTransactionCtx(ctx context.Context, block TransactionBlock) {
 // TransactionCtx starts a transaction.
 func (m Model) TransactionCtx(ctx context.Context, block TransactionBlock) (err error) {
 	m.log("BEGIN", nil, 0)
-	var tx db.Tx
+	var tx Tx
 	tx, err = m.connection.BeginTx(ctx, "", false)
 	if err != nil {
 		return
