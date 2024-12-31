@@ -57,23 +57,56 @@ func (s *UpdateSQL) Reload() *UpdateSQL {
 				jsonbFields[field.Jsonb][field] = value
 				continue
 			}
-			if idx, ok := fieldsIndex[field.Name]; ok { // prevent duplication
-				values[idx] = value
+			if s, ok := value.(String); ok {
+				fields = append(fields, fmt.Sprintf("%s = %s", field.ColumnName, s))
 				continue
 			}
-			fields = append(fields, fmt.Sprintf("%s = $%d", field.ColumnName, i))
-			fieldsIndex[field.Name] = i - 1
-			values = append(values, value)
-			i += 1
+			if idx, ok := fieldsIndex[field.Name]; ok { // prevent duplication
+				switch v := value.(type) {
+				case stringWithArg:
+					str := strings.Replace(v.str, "$?", fmt.Sprintf("$%d", idx+1), -1)
+					fields[idx] = fmt.Sprintf("%s = %s", field.ColumnName, str)
+					values[idx] = v.arg
+				default:
+					values[idx] = v
+				}
+				continue
+			}
+			switch v := value.(type) {
+			case stringWithArg:
+				str := strings.Replace(v.str, "$?", fmt.Sprintf("$%d", i), -1)
+				fields = append(fields, fmt.Sprintf("%s = %s", field.ColumnName, str))
+				fieldsIndex[field.Name] = i - 1
+				values = append(values, v.arg)
+				i += 1
+			default:
+				fields = append(fields, fmt.Sprintf("%s = $%d", field.ColumnName, i))
+				fieldsIndex[field.Name] = i - 1
+				values = append(values, v)
+				i += 1
+			}
 		}
 	}
 	for jsonbField, changes := range jsonbFields {
 		var field = fmt.Sprintf("COALESCE(%s, '{}'::jsonb)", jsonbField)
 		for f, value := range changes {
-			field = fmt.Sprintf("jsonb_set(%s, '{%s}', $%d)", field, f.ColumnName, i)
-			j, _ := json.Marshal(value)
-			values = append(values, string(j))
-			i += 1
+			if s, ok := value.(String); ok {
+				field = fmt.Sprintf("jsonb_set(%s, '{%s}', %s)", field, f.ColumnName, s)
+				continue
+			}
+			switch v := value.(type) {
+			case stringWithArg:
+				str := strings.Replace(v.str, "$?", fmt.Sprintf("$%d", i), -1)
+				field = fmt.Sprintf("jsonb_set(%s, '{%s}', %s)", field, f.ColumnName, str)
+				j, _ := json.Marshal(v.arg)
+				values = append(values, string(j))
+				i += 1
+			default:
+				field = fmt.Sprintf("jsonb_set(%s, '{%s}', $%d)", field, f.ColumnName, i)
+				j, _ := json.Marshal(v)
+				values = append(values, string(j))
+				i += 1
+			}
 		}
 		fields = append(fields, jsonbField+" = "+field)
 	}

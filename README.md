@@ -86,10 +86,11 @@ make this benchmark chart. For more information, see
 // 		Id         int
 // 		CategoryId int
 // 		Title      string
-// 		Picture    string `jsonb:"meta"`
+// 		Picture    string `jsonb:"Meta"`
+// 		Views      int    `dataType:"bigint DEFAULT 100"`
 // 	}
 // )
-m := psql.NewModel(Post{}, conn, logger.StandardLogger)
+Posts := psql.NewModel(Post{}, conn, logger.StandardLogger)
 ```
 
 Table name is inferred from the name of the struct, the tag of `__TABLE_NAME__`
@@ -100,82 +101,92 @@ are in snake case by default.
 ### Create Table
 
 ```go
-// CREATE TABLE users (
-//         id SERIAL PRIMARY KEY,
-//         category_id bigint DEFAULT 0 NOT NULL,
-//         status text DEFAULT ''::text NOT NULL,
-//         meta jsonb
+// CREATE TABLE Posts (
+//	Id SERIAL PRIMARY KEY,
+//	CategoryId bigint DEFAULT 0 NOT NULL,
+//	Title text DEFAULT ''::text NOT NULL,
+//	Views bigint DEFAULT 100,
+//	Meta jsonb DEFAULT '{}'::jsonb NOT NULL
 // )
-m.NewSQL(m.Schema()).MustExecute()
+Posts.NewSQL(Posts.Schema()).MustExecute()
 ```
 
 ### Insert Record
 
 ```go
 var newPostId int
-m.Insert(
-	m.Permit("Title", "Picture").Filter(`{ "Title": "hello", "Picture": "world!" }`),
+Posts.Insert(
+	Posts.Permit("Title", "Picture").Filter(`{ "Title": "hello", "Picture": "world!" }`),
 	"CategoryId", 2,
-).Returning("id").MustQueryRow(&newPostId)
+).Returning("Id").MustQueryRow(&newPostId)
 // or:
-m.Insert(
+Posts.Insert(
 	"Title", "hello",
 	"Picture", "world!",
 	"CategoryId", 2,
-).Returning("id").MustQueryRow(&newPostId)
+).Returning("Id").MustQueryRow(&newPostId)
+// INSERT INTO Posts (Title, CategoryId, Meta) VALUES ($1, $2, $3) RETURNING Id
 ```
 
 ### Find Record
 
 ```go
 var firstPost Post
-m.Find().Where("id = $1", newPostId).MustQuery(&firstPost)
-// or: m.WHERE("id", "=", newPostId).Find().MustQuery(&firstPost)
-// or: m.Where("id = $1", newPostId).Find().MustQuery(&firstPost)
-// {1 2 hello world!}
+Posts.Find().Where("Id = $?", newPostId).MustQuery(&firstPost)
+// or: Posts.WHERE("Id", "=", newPostId).Find().MustQuery(&firstPost)
+// or: Posts.Where("Id = $1", newPostId).Find().MustQuery(&firstPost)
+// SELECT Id, CategoryId, Title, Views, Meta FROM Posts WHERE Id = $1 [1] 1.505779ms
+// {1 2 hello world! 100}
 
 var ids []int
-m.Select("id").OrderBy("id ASC").MustQuery(&ids)
+Posts.Select("Id").OrderBy("Id ASC").MustQuery(&ids)
 // [1]
 
 // group results by key
 var id2title map[int]string
-m.Select("id", "title").MustQuery(&id2title)
+Posts.Select("Id", "Title").MustQuery(&id2title)
 // map[1:hello]
 
 // map's key and value can be int, string, bool, array or struct
 // if it is one-to-many, use slice as map's value
 var postsByCategoryId map[struct{ categoryId int }][]struct{ title string }
-m.Select("category_id", "title").MustQuery(&postsByCategoryId)
-fmt.Println("map:", postsByCategoryId)
+Posts.Select("CategoryId", "Title").MustQuery(&postsByCategoryId)
 // map[{2}:[{hello}]]
 
 var posts []Post
-m.Find().MustQuery(&posts)
-// [{1 2 hello world!}]
+Posts.Find().MustQuery(&posts)
+// [{1 2 hello world! 100}]
 ```
 
 ### Update Record
 
 ```go
 var rowsAffected int
-m.Update(
-	m.Permit("Picture").Filter(`{ "Picture": "WORLD!" }`),
-).Where("id = $1", newPostId).MustExecute(&rowsAffected)
-// or: m.Where(...).Update(...).MustExecute(...)
+Posts.Update(
+	Posts.Permit("Picture").Filter(`{ "Picture": "WORLD!" }`),
+).Where("Id = $1", newPostId).MustExecute(&rowsAffected)
+// or: Posts.Where(...).Update(...).MustExecute(...)
+// UPDATE Posts SET Meta = jsonb_set(COALESCE(Meta, '{}'::jsonb), '{Picture}', $2) WHERE Id = $1
+
+Posts.Update("Views", psql.String("Views * 2")).Where("Id = $?", 1).MustExecute()
+// UPDATE Posts SET Views = Views * 2 WHERE Id = $1
+
+Posts.Update("Views", psql.StringWithArg("Views + $?", 99)).Where("Id = $?", 1).MustExecute()
+// UPDATE Posts SET Views = Views + $2 WHERE Id = $1
 ```
 
 ### Delete Record
 
 ```go
 var rowsDeleted int
-m.Delete().Where("id = $1", newPostId).MustExecute(&rowsDeleted)
-// or: m.Where(...).Delete().MustExecute(...)
+Posts.Delete().Where("Id = $?", newPostId).MustExecute(&rowsDeleted)
+// or: Posts.Where(...).Delete().MustExecute(...)
+// DELETE FROM Posts WHERE Id = $1
 ```
 
 ### Other
 
 ```go
-m.Where("id = $1", newPostId).MustExists() // true or false
-m.MustCount() // integer
+Posts.Where("Id = $?", newPostId).MustExists() // true or false
+Posts.MustCount() // integer
 ```

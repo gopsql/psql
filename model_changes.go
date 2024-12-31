@@ -23,6 +23,26 @@ func (c Changes) String() string {
 	return string(j)
 }
 
+type (
+	String string
+
+	stringWithArg struct {
+		str string
+		arg interface{}
+	}
+)
+
+func StringWithArg(str string, arg interface{}) stringWithArg {
+	return stringWithArg{
+		str: str,
+		arg: arg,
+	}
+}
+
+func (s stringWithArg) String() string {
+	return s.str
+}
+
 // Convert RawChanges to Changes. Keys are JSON key names. See FieldChanges().
 //
 //	m := psql.NewModel(struct {

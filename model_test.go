@@ -211,6 +211,8 @@ func TestModel(_t *testing.T) {
 		m1.Update(c).WHERE("name", "=", "foo", "id", "=", 1).String(),
 		"UPDATE admins SET name = $3 WHERE (name = $1) AND (id = $2)",
 	)
+	t.String(m1.Update("Name", String("CONCAT(name, '1')")).String(),
+		"UPDATE admins SET name = CONCAT(name, '1')")
 
 	m2 := NewModel(category{})
 	t.String(m2.Find().String(), "SELECT id, created_at, updated_at, meta FROM categories")
@@ -227,6 +229,14 @@ func TestModel(_t *testing.T) {
 	t.String(m2.Insert(m2c).String(), "INSERT INTO categories (meta) VALUES ($1)")
 	t.String(m2.Insert(m2c).values[0].(string), `{"picture":"https://hello/world"}`)
 	t.String(m2.Update(m2c).String(), "UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', $1)")
+	t.String(m2.Update("Picture", String("to_jsonb(UPPER(COALESCE(meta->>'picture', '')))")).String(),
+		"UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', to_jsonb(UPPER(COALESCE(meta->>'picture', ''))))")
+	t.String(m2.Update(
+		"Id", String("id + 1"),
+		"Picture", String("'null'::jsonb"),
+		"CreatedAt", String("now()"),
+	).String(),
+		"UPDATE categories SET id = id + 1, created_at = now(), meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', 'null'::jsonb)")
 	t.String(m2.Update(m2c).values[0].(string), `"https://hello/world"`)
 	t.String(m2.Update(m2c).Where("id = $1", 1).String(),
 		"UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', $2) WHERE id = $1")
@@ -300,6 +310,7 @@ func TestModel(_t *testing.T) {
 		"Price", 1,
 	)
 	t.String(x7.String(), "UPDATE products SET price = $1")
+	t.String(m4.Update("Price", String("price + 1")).String(), "UPDATE products SET price = price + 1")
 	var pp product
 	m4.MustAssign(
 		&pp,
