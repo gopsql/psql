@@ -540,6 +540,10 @@ func testCRUD(_t *testing.T, conn db.DB) {
 			"UserId", psql.StringWithArg("user_id + $?", 99), // this will override the previous one
 		).MustExecuteCtxTx(ctx, tx)
 		model.Update("UserId", psql.String("user_id * 3")).MustExecuteCtxTx(ctx, tx)
+		model.Update("FieldInJsonb", psql.StringWithArg(
+			`to_jsonb(concat_ws(E'\n', NULLIF(meta->>'field_in_jsonb', ''), $?::text))`,
+			"foo",
+		)).MustExecuteCtxTx(ctx, tx)
 		return nil
 	})
 	t.Int("rows affected", rowsAffected, 2)
@@ -555,7 +559,7 @@ func testCRUD(_t *testing.T, conn db.DB) {
 	ua = time.Since(secondOrder.UpdatedAt)
 	t.Bool("order created at", ca > 200*time.Millisecond) // because of time.Sleep
 	t.Bool("order updated at", ua > 0 && ua < 200*time.Millisecond)
-	t.String("order FieldInJsonb", secondOrder.FieldInJsonb, "red")
+	t.String("order FieldInJsonb", secondOrder.FieldInJsonb, "red\nfoo")
 	t.String("order OtherJsonb", secondOrder.OtherJsonb, "blue")
 	var u int
 	t.Int("order user", secondOrder.UserId, (u-23+99)*3)

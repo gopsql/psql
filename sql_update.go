@@ -98,8 +98,7 @@ func (s *UpdateSQL) Reload() *UpdateSQL {
 			case stringWithArg:
 				str := strings.Replace(v.str, "$?", fmt.Sprintf("$%d", i), -1)
 				field = fmt.Sprintf("jsonb_set(%s, '{%s}', %s)", field, f.ColumnName, str)
-				j, _ := json.Marshal(v.arg)
-				values = append(values, string(j))
+				values = append(values, v.arg)
 				i += 1
 			default:
 				field = fmt.Sprintf("jsonb_set(%s, '{%s}', $%d)", field, f.ColumnName, i)
