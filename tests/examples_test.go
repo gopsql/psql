@@ -25,7 +25,7 @@ type (
 	}
 )
 
-func ExamplePQ() {
+func Example_pq() {
 	c, err := sql.Open("postgres", "postgres://localhost:5432/gopsqltests?sslmode=disable")
 	if err != nil {
 		panic(err)
@@ -42,7 +42,7 @@ func ExamplePQ() {
 	// gopsqltests
 }
 
-func ExampleGOPG() {
+func Example_gopg() {
 	conn := gopg.MustOpen("postgres://localhost:5432/gopsqltests?sslmode=disable")
 	defer conn.Close()
 
