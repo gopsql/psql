@@ -2,6 +2,8 @@ package psql
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -13,7 +15,9 @@ type (
 		sqlHavings
 		fields  []string
 		jfCount int // jsonb fields count
+		from    string
 		join    string
+		with    string
 		groupBy string
 		orderBy string
 		limit   string
@@ -93,9 +97,24 @@ func (m Model) Select(fields ...string) *SelectSQL {
 	return m.newSelect(fields...)
 }
 
+// Create a SELECT query statement with FROM items.
+func (m Model) From(items ...string) *SelectSQL {
+	return m.newSelect().From(items...)
+}
+
 // Create a SELECT query statement with joins.
 func (m Model) Join(expressions ...string) *SelectSQL {
 	return m.newSelect().Join(expressions...)
+}
+
+// Create a SELECT query statement with CTE (Common Table Expression).
+func (m Model) With(expression string, args ...interface{}) *SelectSQL {
+	return m.newSelect().With(expression, args...)
+}
+
+// Create a SELECT query statement with CTE (Common Table Expression).
+func (m Model) WITH(name string, sql *SelectSQL) *SelectSQL {
+	return m.newSelect().WITH(name, sql)
 }
 
 // Create a SELECT query statement with condition. Arguments should use
@@ -325,6 +344,24 @@ func (s *SelectSQL) WHERE(args ...interface{}) *SelectSQL {
 	return s
 }
 
+// Clears existing FROM items and set new FROM items.
+func (s *SelectSQL) ResetFrom(items ...string) *SelectSQL {
+	s.from = strings.Join(items, ", ")
+	return s
+}
+
+// Adds FROM items to SELECT statement.
+func (s *SelectSQL) From(items ...string) *SelectSQL {
+	if s.from == "" {
+		s.from = s.model.tableName
+	}
+	if s.from != "" {
+		s.from += ", "
+	}
+	s.from += strings.Join(items, ", ")
+	return s
+}
+
 // Clears existing JOIN statements and set new JOIN statements.
 func (s *SelectSQL) ResetJoin(expressions ...string) *SelectSQL {
 	s.join = strings.Join(expressions, " ")
@@ -340,6 +377,52 @@ func (s *SelectSQL) Join(expressions ...string) *SelectSQL {
 	return s
 }
 
+// Adds WITH to SELECT statement.
+func (s *SelectSQL) With(expression string, args ...interface{}) *SelectSQL {
+	i := 1
+	for range args {
+		expression = strings.Replace(expression, "$?", fmt.Sprintf("$%d", i), 1)
+		i += 1
+	}
+	if offset := len(s.args); offset > 0 {
+		re := regexp.MustCompile(`\$(\d+)`)
+		expression = re.ReplaceAllStringFunc(expression, func(s string) string {
+			num, err := strconv.Atoi(s[1:])
+			if err != nil { // this should not happen
+				panic(err)
+			}
+			return fmt.Sprintf("$%d", num+offset)
+		})
+	}
+	if s.with != "" {
+		s.with += ", "
+	}
+	s.with += expression
+	s.args = append(s.args, args...)
+	return s
+}
+
+// Adds WITH from another SELECT statement to SELECT statement.
+func (s *SelectSQL) WITH(name string, sql *SelectSQL) *SelectSQL {
+	sqlQuery := sql.String()
+	if offset := len(s.args); offset > 0 {
+		re := regexp.MustCompile(`\$(\d+)`)
+		sqlQuery = re.ReplaceAllStringFunc(sqlQuery, func(s string) string {
+			num, err := strconv.Atoi(s[1:])
+			if err != nil { // this should not happen
+				panic(err)
+			}
+			return fmt.Sprintf("$%d", num+offset)
+		})
+	}
+	if s.with != "" {
+		s.with += ", "
+	}
+	s.with += name + " AS (" + sqlQuery + ")"
+	s.args = append(s.args, sql.args...)
+	return s
+}
+
 // Perform operations on the chain.
 func (s *SelectSQL) Tap(funcs ...func(*SelectSQL) *SelectSQL) *SelectSQL {
 	for i := range funcs {
@@ -350,10 +433,18 @@ func (s *SelectSQL) Tap(funcs ...func(*SelectSQL) *SelectSQL) *SelectSQL {
 
 func (s *SelectSQL) String() string {
 	var sql string
+	if s.with != "" {
+		sql += "WITH " + s.with + " "
+	}
 	if s.sql != "" {
-		sql = s.formattedSQL()
+		sql += s.formattedSQL()
 	} else {
-		sql = "SELECT " + strings.Join(s.fields, ", ") + " FROM " + s.model.tableName
+		sql += "SELECT " + strings.Join(s.fields, ", ") + " FROM "
+		if s.from != "" {
+			sql += s.from
+		} else {
+			sql += s.model.tableName
+		}
 	}
 	if s.join != "" {
 		sql += " " + s.join

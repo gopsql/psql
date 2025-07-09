@@ -155,6 +155,17 @@ func TestModel(_t *testing.T) {
 		"SELECT id FROM admins JOIN a ON a.id = admins.id JOIN b ON b.id = admins.id")
 	t.String(m1.Select("id").Join("JOIN a ON a.id = admins.id").ResetJoin("JOIN b ON b.id = admins.id").String(),
 		"SELECT id FROM admins JOIN b ON b.id = admins.id")
+	sql, values := m1.WITH("a2", m1.Select("id").Where("id = $?", 1)).Where("name = $?", "new").Select("id").StringValues()
+	t.String(sql, "WITH a2 AS (SELECT id FROM admins WHERE id = $1) SELECT id FROM admins WHERE name = $2")
+	t.String(fmt.Sprint(values), "[1 new]")
+	t.String(
+		m1.With("RECURSIVE a(n) AS (VALUES (1) UNION ALL SELECT n+1 FROM a WHERE n < 3)").
+			With("b(n) AS (VALUES (10) UNION ALL SELECT n+1 FROM b WHERE n < 12)").
+			Select("a.n AS a_value, b.n AS b_value, a.n + b.n AS total").
+			ResetFrom("a").From("b").String(),
+		"WITH RECURSIVE a(n) AS (VALUES (1) UNION ALL SELECT n+1 FROM a WHERE n < 3), "+
+			"b(n) AS (VALUES (10) UNION ALL SELECT n+1 FROM b WHERE n < 12) "+
+			"SELECT a.n AS a_value, b.n AS b_value, a.n + b.n AS total FROM a, b")
 	t.String(m1.Delete().String(), "DELETE FROM admins")
 	t.String(m1.Delete().Returning("id").String(), "DELETE FROM admins RETURNING id")
 	t.String(m1.Delete().Using("users", "orders").
@@ -226,7 +237,7 @@ func TestModel(_t *testing.T) {
 	m2c := m2.Changes(RawChanges{
 		"Picture": "https://hello/world",
 	})
-	sql, values := m2.Insert(m2c).StringValues()
+	sql, values = m2.Insert(m2c).StringValues()
 	t.String(sql, "INSERT INTO categories (meta) VALUES ($1)")
 	t.String(values[0].(string), `{"picture":"https://hello/world"}`)
 	t.String(m2.Update(m2c).String(), "UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', $1)")
