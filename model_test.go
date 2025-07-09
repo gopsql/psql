@@ -226,8 +226,9 @@ func TestModel(_t *testing.T) {
 	m2c := m2.Changes(RawChanges{
 		"Picture": "https://hello/world",
 	})
-	t.String(m2.Insert(m2c).String(), "INSERT INTO categories (meta) VALUES ($1)")
-	t.String(m2.Insert(m2c).values[0].(string), `{"picture":"https://hello/world"}`)
+	sql, values := m2.Insert(m2c).StringValues()
+	t.String(sql, "INSERT INTO categories (meta) VALUES ($1)")
+	t.String(values[0].(string), `{"picture":"https://hello/world"}`)
 	t.String(m2.Update(m2c).String(), "UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', $1)")
 	t.String(m2.Update("Picture", String("to_jsonb(UPPER(COALESCE(meta->>'picture', '')))")).String(),
 		"UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', to_jsonb(UPPER(COALESCE(meta->>'picture', ''))))")
@@ -237,7 +238,8 @@ func TestModel(_t *testing.T) {
 		"CreatedAt", String("now()"),
 	).String(),
 		"UPDATE categories SET id = id + 1, created_at = now(), meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', 'null'::jsonb)")
-	t.String(m2.Update(m2c).values[0].(string), `"https://hello/world"`)
+	_, values = m2.Update(m2c).StringValues()
+	t.String(values[0].(string), `"https://hello/world"`)
 	t.String(m2.Update(m2c).Where("id = $1", 1).String(),
 		"UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', $2) WHERE id = $1")
 	m2c2 := m2.Changes(RawChanges{
@@ -248,10 +250,12 @@ func TestModel(_t *testing.T) {
 			},
 		},
 	})
-	t.String(m2.Insert(m2c2).String(), "INSERT INTO categories (meta) VALUES ($1)")
-	t.String(m2.Insert(m2c2).values[0].(string), `{"names":[{"key":"en_US","value":"Category"}]}`)
-	t.String(m2.Update(m2c2).String(), "UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{names}', $1)")
-	t.String(m2.Update(m2c2).values[0].(string), `[{"key":"en_US","value":"Category"}]`)
+	sql, values = m2.Insert(m2c2).StringValues()
+	t.String(sql, "INSERT INTO categories (meta) VALUES ($1)")
+	t.String(values[0].(string), `{"names":[{"key":"en_US","value":"Category"}]}`)
+	sql, values = m2.Update(m2c2).StringValues()
+	t.String(sql, "UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{names}', $1)")
+	t.String(values[0].(string), `[{"key":"en_US","value":"Category"}]`)
 	t.String(m2.Insert(
 		m2c2,
 		m2.CreatedAt(),
@@ -298,14 +302,16 @@ func TestModel(_t *testing.T) {
 		"Price", 2, 3, 4,
 		"Price", 10,
 	)
-	t.String(x5.String(), x0)
-	t.String(fmt.Sprint(x5.values), "[foobar 10]")
+	x5sql, x5values := x5.StringValues()
+	t.String(x5sql, x0)
+	t.String(fmt.Sprint(x5values), "[foobar 10]")
 	x6 := m4.Insert(
 		m4.FieldChanges(RawChanges{"Name": "foobar"}),
 		m4.FieldChanges(RawChanges{"Price": 10}),
 	)
-	t.String(x6.String(), x5.String())
-	t.String(fmt.Sprint(x6.values), fmt.Sprint(x5.values))
+	x6sql, x6values := x6.StringValues()
+	t.String(x6sql, x5sql)
+	t.String(fmt.Sprint(x6values), fmt.Sprint(x5values))
 	x7 := m4.Update(
 		"Price", 1,
 	)

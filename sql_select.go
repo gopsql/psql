@@ -90,7 +90,7 @@ func (m Model) Find(options ...interface{}) *SelectSQL {
 //	}
 //	psql.NewModelTable("users", conn).Select("country, city, id, name").MustQuery(&users)
 func (m Model) Select(fields ...string) *SelectSQL {
-	return m.newSelect(fields...).Reload()
+	return m.newSelect(fields...)
 }
 
 // Create a SELECT query statement with joins.
@@ -117,22 +117,6 @@ func (m Model) Where(condition string, args ...interface{}) *SelectSQL {
 // WHERE("A", "=", 1, "B", "!=", 2) means "WHERE (A = 1) AND (B != 2)".
 func (m Model) WHERE(args ...interface{}) *SelectSQL {
 	return m.newSelect().WHERE(args...)
-}
-
-// Update SQL and values in the DeleteSQL object due to changes of conditions.
-func (s *SelectSQL) Reload() *SelectSQL {
-	sql := "SELECT " + strings.Join(s.fields, ", ") + " FROM " + s.model.tableName
-	if s.join != "" {
-		sql += " " + s.join
-	}
-	sql += s.where()
-	if s.groupBy != "" {
-		sql += " GROUP BY " + s.groupBy + s.having()
-	}
-	n := s.model.NewSQL(sql, s.args...)
-	s.sql = n.sql
-	s.values = n.values
-	return s
 }
 
 // Create a SELECT query statement with all fields of a Model. Options can be
@@ -173,7 +157,7 @@ func (s *SelectSQL) Update(lotsOfChanges ...interface{}) *UpdateSQL {
 	n := s.model.Update(lotsOfChanges...)
 	n.conditions = s.conditions
 	n.args = s.args
-	return n.Reload()
+	return n
 }
 
 // Create a DELETE statement from Where().
@@ -181,7 +165,7 @@ func (s *SelectSQL) Delete() *DeleteSQL {
 	n := s.model.Delete()
 	n.conditions = s.conditions
 	n.args = s.args
-	return n.Reload()
+	return n
 }
 
 // MustExists is like Exists but panics if existence check operation fails.
@@ -232,7 +216,7 @@ func (s *SelectSQL) Count(optional ...string) (count int, err error) {
 // Set expressions to SELECT statement.
 func (s *SelectSQL) ResetSelect(expressions ...string) *SelectSQL {
 	s.fields = expressions
-	return s.Reload()
+	return s
 }
 
 // Add expressions to SELECT statement, before any existing jsonb columns.
@@ -243,7 +227,7 @@ func (s *SelectSQL) Select(expressions ...string) *SelectSQL {
 	} else {
 		s.fields = append(s.fields, expressions...)
 	}
-	return s.Reload()
+	return s
 }
 
 // Replace old field names in existing SELECT statement with new.
@@ -253,13 +237,13 @@ func (s *SelectSQL) ReplaceSelect(old, new string) *SelectSQL {
 			s.fields[i] = new
 		}
 	}
-	return s.Reload()
+	return s
 }
 
 // Adds GROUP BY to SELECT statement.
 func (s *SelectSQL) GroupBy(expressions ...string) *SelectSQL {
 	s.groupBy = strings.Join(expressions, ", ")
-	return s.Reload()
+	return s
 }
 
 // Adds HAVING to SELECT statement. Arguments should use positonal
@@ -271,7 +255,7 @@ func (s *SelectSQL) Having(condition string, args ...interface{}) *SelectSQL {
 		condition = strings.Replace(condition, "$?", fmt.Sprintf("$%d", len(s.args)), -1)
 	}
 	s.havings = append(s.havings, condition)
-	return s.Reload()
+	return s
 }
 
 // Adds ORDER BY to SELECT statement.
@@ -309,7 +293,7 @@ func (s *SelectSQL) Where(condition string, args ...interface{}) *SelectSQL {
 		condition = strings.Replace(condition, "$?", fmt.Sprintf("$%d", len(s.args)), -1)
 	}
 	s.conditions = append(s.conditions, condition)
-	return s.Reload()
+	return s
 }
 
 // WHERE adds conditions to SELECT statement from variadic inputs.
@@ -338,13 +322,13 @@ func (s *SelectSQL) WHERE(args ...interface{}) *SelectSQL {
 		s.args = append(s.args, args[i*3+2])
 		s.conditions = append(s.conditions, fmt.Sprintf("%s %s $%d", s.model.ToColumnName(column), operator, len(s.args)))
 	}
-	return s.Reload()
+	return s
 }
 
 // Clears existing JOIN statements and set new JOIN statements.
 func (s *SelectSQL) ResetJoin(expressions ...string) *SelectSQL {
 	s.join = strings.Join(expressions, " ")
-	return s.Reload()
+	return s
 }
 
 // Adds join to SELECT statement.
@@ -353,7 +337,7 @@ func (s *SelectSQL) Join(expressions ...string) *SelectSQL {
 		s.join += " "
 	}
 	s.join += strings.Join(expressions, " ")
-	return s.Reload()
+	return s
 }
 
 // Perform operations on the chain.
@@ -365,7 +349,19 @@ func (s *SelectSQL) Tap(funcs ...func(*SelectSQL) *SelectSQL) *SelectSQL {
 }
 
 func (s *SelectSQL) String() string {
-	sql := s.sql
+	var sql string
+	if s.sql != "" {
+		sql = s.formattedSQL()
+	} else {
+		sql = "SELECT " + strings.Join(s.fields, ", ") + " FROM " + s.model.tableName
+	}
+	if s.join != "" {
+		sql += " " + s.join
+	}
+	sql += s.where()
+	if s.groupBy != "" {
+		sql += " GROUP BY " + s.groupBy + s.having()
+	}
 	if s.orderBy != "" {
 		sql += " ORDER BY " + s.orderBy
 	}
@@ -376,6 +372,10 @@ func (s *SelectSQL) String() string {
 		sql += " OFFSET " + s.offset
 	}
 	return sql
+}
+
+func (s *SelectSQL) StringValues() (string, []interface{}) {
+	return s.model.convertValues(s.String(), s.args)
 }
 
 func (s sqlConditions) where() string {

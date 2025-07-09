@@ -26,6 +26,7 @@ type (
 	SQL struct {
 		main interface {
 			String() string
+			StringValues() (string, []interface{})
 		}
 		model  *Model
 		sql    string
@@ -68,13 +69,9 @@ func (j *jsonbRaw) Scan(src interface{}) error { // necessary for github.com/lib
 // Create new SQL with SQL statement as first argument, The rest
 // arguments are for any placeholder parameters in the statement.
 func (m Model) NewSQL(sql string, values ...interface{}) *SQL {
-	sql = strings.TrimSpace(sql)
-	if c, ok := m.connection.(db.ConvertParameters); ok {
-		sql, values = c.ConvertParameters(sql, values)
-	}
 	return &SQL{
 		model:  &m,
-		sql:    sql,
+		sql:    strings.TrimSpace(sql),
 		values: values,
 	}
 }
@@ -87,11 +84,28 @@ func (s *SQL) Tap(funcs ...func(*SQL) *SQL) *SQL {
 	return s
 }
 
+func (s SQL) formattedSQL() string {
+	sql := s.sql
+	i := 1
+	for range s.values {
+		sql = strings.Replace(sql, "$?", fmt.Sprintf("$%d", i), 1)
+		i += 1
+	}
+	return sql
+}
+
 func (s SQL) String() string {
 	if s.main != nil {
 		return s.main.String()
 	}
-	return s.sql
+	return s.formattedSQL()
+}
+
+func (s SQL) StringValues() (string, []interface{}) {
+	if s.main != nil {
+		return s.main.StringValues()
+	}
+	return s.formattedSQL(), s.values
 }
 
 func (s SQL) Values() []interface{} {
@@ -137,13 +151,13 @@ func (s SQL) MustQueryCtxTx(ctx context.Context, tx Tx, target interface{}) {
 // Target must be a pointer to a struct, a slice or a map.
 // For use cases, see Find() and Select().
 func (s SQL) QueryCtxTx(ctx context.Context, tx Tx, target interface{}) error {
-	sqlQuery := s.String()
-	if sqlQuery == "" {
-		return nil
-	}
-
 	if s.model.connection == nil {
 		return ErrNoConnection
+	}
+
+	sqlQuery, values := s.StringValues()
+	if sqlQuery == "" {
+		return nil
 	}
 
 	var rv reflect.Value
@@ -195,20 +209,20 @@ func (s SQL) QueryCtxTx(ctx context.Context, tx Tx, target interface{}) error {
 
 	if kind == reflect.Struct { // if target is not a slice, use QueryRow instead
 		start := time.Now()
-		defer s.log(sqlQuery, s.values, start)
+		defer s.log(sqlQuery, values, start)
 		if tx != nil {
-			return mi.scan(rv, tx.QueryRowContext(ctx, sqlQuery, s.values...))
+			return mi.scan(rv, tx.QueryRowContext(ctx, sqlQuery, values...))
 		}
-		return mi.scan(rv, s.model.connection.QueryRowContext(ctx, sqlQuery, s.values...))
+		return mi.scan(rv, s.model.connection.QueryRowContext(ctx, sqlQuery, values...))
 	} else if kind == reflect.Map {
 		start := time.Now()
-		defer s.log(sqlQuery, s.values, start)
+		defer s.log(sqlQuery, values, start)
 		var rows db.Rows
 		var err error
 		if tx != nil {
-			rows, err = tx.QueryContext(ctx, sqlQuery, s.values...)
+			rows, err = tx.QueryContext(ctx, sqlQuery, values...)
 		} else {
-			rows, err = s.model.connection.QueryContext(ctx, sqlQuery, s.values...)
+			rows, err = s.model.connection.QueryContext(ctx, sqlQuery, values...)
 		}
 		if err != nil {
 			return err
@@ -252,13 +266,13 @@ func (s SQL) QueryCtxTx(ctx context.Context, tx Tx, target interface{}) error {
 	}
 
 	start := time.Now()
-	defer s.log(sqlQuery, s.values, start)
+	defer s.log(sqlQuery, values, start)
 	var rows db.Rows
 	var err error
 	if tx != nil {
-		rows, err = tx.QueryContext(ctx, sqlQuery, s.values...)
+		rows, err = tx.QueryContext(ctx, sqlQuery, values...)
 	} else {
-		rows, err = s.model.connection.QueryContext(ctx, sqlQuery, s.values...)
+		rows, err = s.model.connection.QueryContext(ctx, sqlQuery, values...)
 	}
 	if err != nil {
 		return err
@@ -365,19 +379,19 @@ func (s SQL) MustQueryRowCtxTx(ctx context.Context, tx Tx, dest ...interface{}) 
 // QueryRowCtxTx gets results from the first row, and put values of each column
 // to corresponding dest. For use cases, see Insert().
 func (s SQL) QueryRowCtxTx(ctx context.Context, tx Tx, dest ...interface{}) error {
-	sqlQuery := s.String()
-	if sqlQuery == "" {
-		return nil
-	}
 	if s.model.connection == nil {
 		return ErrNoConnection
 	}
-	start := time.Now()
-	defer s.log(sqlQuery, s.values, start)
-	if tx != nil {
-		return tx.QueryRowContext(ctx, sqlQuery, s.values...).Scan(dest...)
+	sqlQuery, values := s.StringValues()
+	if sqlQuery == "" {
+		return nil
 	}
-	return s.model.connection.QueryRowContext(ctx, sqlQuery, s.values...).Scan(dest...)
+	start := time.Now()
+	defer s.log(sqlQuery, values, start)
+	if tx != nil {
+		return tx.QueryRowContext(ctx, sqlQuery, values...).Scan(dest...)
+	}
+	return s.model.connection.QueryRowContext(ctx, sqlQuery, values...).Scan(dest...)
 }
 
 // MustExecute is like Execute but panics if execute operation fails.
@@ -419,19 +433,19 @@ func (s SQL) MustExecuteCtxTx(ctx context.Context, tx Tx, dest ...interface{}) {
 // INSERT, or DELETE. You can get number of rows affected by providing pointer
 // of int or int64 to the optional dest. For use cases, see Update().
 func (s SQL) ExecuteCtxTx(ctx context.Context, tx Tx, dest ...interface{}) error {
-	sqlQuery := s.String()
-	if sqlQuery == "" {
-		return ErrNoSQL
-	}
 	if s.model.connection == nil {
 		return ErrNoConnection
 	}
-	start := time.Now()
-	defer s.log(sqlQuery, s.values, start)
-	if tx != nil {
-		return returnRowsAffected(dest)(tx.ExecContext(ctx, sqlQuery, s.values...))
+	sqlQuery, values := s.StringValues()
+	if sqlQuery == "" {
+		return ErrNoSQL
 	}
-	return returnRowsAffected(dest)(s.model.connection.ExecContext(ctx, sqlQuery, s.values...))
+	start := time.Now()
+	defer s.log(sqlQuery, values, start)
+	if tx != nil {
+		return returnRowsAffected(dest)(tx.ExecContext(ctx, sqlQuery, values...))
+	}
+	return returnRowsAffected(dest)(s.model.connection.ExecContext(ctx, sqlQuery, values...))
 }
 
 func (s SQL) log(sql string, args []interface{}, startTime time.Time) {

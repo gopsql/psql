@@ -10,18 +10,20 @@ type (
 	// InsertSQL can be created with Model.NewSQL().AsInsert()
 	InsertSQL struct {
 		*SQL
-		fields           []string
+		changes          []interface{}
 		outputExpression string
 		conflictTargets  []string
 		conflictActions  []string
+		updateAll        bool
+		updateAllExcept  []string
 	}
 )
 
 // Convert SQL to InsertSQL. The optional fields will be used in DoUpdateAll().
-func (s SQL) AsInsert(fields ...string) *InsertSQL {
+func (s SQL) AsInsert(changes ...interface{}) *InsertSQL {
 	i := &InsertSQL{
-		SQL:    &s,
-		fields: fields,
+		SQL:     &s,
+		changes: changes,
 	}
 	i.SQL.main = i
 	return i
@@ -38,13 +40,69 @@ func (s SQL) AsInsert(fields ...string) *InsertSQL {
 //
 //	m.Insert("FieldA", 123, "FieldB", "other").MustExecute()
 func (m Model) Insert(lotsOfChanges ...interface{}) *InsertSQL {
+	return m.NewSQL("").AsInsert(lotsOfChanges...)
+}
+
+// Adds RETURNING clause to INSERT INTO statement.
+func (s *InsertSQL) Returning(expressions ...string) *InsertSQL {
+	s.outputExpression = strings.Join(expressions, ", ")
+	return s
+}
+
+// Used with DoNothing(), DoUpdate() or DoUpdateAll().
+func (s *InsertSQL) OnConflict(targets ...string) *InsertSQL {
+	s.conflictTargets = append([]string{}, targets...)
+	return s
+}
+
+// Used with OnConflict(), adds ON CONFLICT DO NOTHING clause to INSERT INTO
+// statement.
+func (s *InsertSQL) DoNothing() *InsertSQL {
+	s.conflictActions = []string{}
+	return s
+}
+
+// Used with OnConflict(), adds custom expressions ON CONFLICT ... DO UPDATE
+// SET ... clause to INSERT INTO statement.
+func (s *InsertSQL) DoUpdate(expressions ...string) *InsertSQL {
+	s.conflictActions = append(s.conflictActions, expressions...)
+	return s
+}
+
+// DoUpdateAll is like DoUpdate but update every field.
+func (s *InsertSQL) DoUpdateAll() *InsertSQL {
+	s.updateAll = true
+	return s
+}
+
+// DoUpdateAllExcept is like DoUpdateAll but except some field names.
+func (s *InsertSQL) DoUpdateAllExcept(fields ...string) *InsertSQL {
+	s.updateAll = false
+	s.updateAllExcept = append(s.updateAllExcept, fields...)
+	return s
+}
+
+// Perform operations on the chain.
+func (s *InsertSQL) Tap(funcs ...func(*InsertSQL) *InsertSQL) *InsertSQL {
+	for i := range funcs {
+		s = funcs[i](s)
+	}
+	return s
+}
+
+func (s InsertSQL) String() string {
+	sql, _ := s.StringValues()
+	return sql
+}
+
+func (s *InsertSQL) StringValues() (string, []interface{}) {
 	fields := []string{}
 	fieldsIndex := map[string]int{}
 	numbers := []string{}
 	values := []interface{}{}
 	jsonbFields := map[string]Changes{}
 	i := 1
-	for _, changes := range m.getChanges(lotsOfChanges) {
+	for _, changes := range s.model.getChanges(s.changes) {
 		for field, value := range changes {
 			if field.Jsonb != "" {
 				if _, ok := jsonbFields[field.Jsonb]; !ok {
@@ -77,96 +135,60 @@ func (m Model) Insert(lotsOfChanges ...interface{}) *InsertSQL {
 	}
 	var sql string
 	if len(fields) > 0 {
-		sql = "INSERT INTO " + m.tableName + " (" + strings.Join(fields, ", ") + ") VALUES (" + strings.Join(numbers, ", ") + ")"
+		sql = "INSERT INTO " + s.model.tableName + " (" + strings.Join(fields, ", ") + ") VALUES (" + strings.Join(numbers, ", ") + ")"
+	} else {
+		sql = s.sql
+		for _, v := range s.values {
+			sql = strings.Replace(sql, "$?", fmt.Sprintf("$%d", i), 1)
+			i += 1
+			values = append(values, v)
+		}
 	}
-	return m.NewSQL(sql, values...).AsInsert(fields...)
-}
-
-// Adds RETURNING clause to INSERT INTO statement.
-func (s *InsertSQL) Returning(expressions ...string) *InsertSQL {
-	s.outputExpression = strings.Join(expressions, ", ")
-	return s
-}
-
-// Used with DoNothing(), DoUpdate() or DoUpdateAll().
-func (s *InsertSQL) OnConflict(targets ...string) *InsertSQL {
-	s.conflictTargets = append([]string{}, targets...)
-	return s
-}
-
-// Used with OnConflict(), adds ON CONFLICT DO NOTHING clause to INSERT INTO
-// statement.
-func (s *InsertSQL) DoNothing() *InsertSQL {
-	s.conflictActions = []string{}
-	return s
-}
-
-// Used with OnConflict(), adds custom expressions ON CONFLICT ... DO UPDATE
-// SET ... clause to INSERT INTO statement.
-func (s *InsertSQL) DoUpdate(expressions ...string) *InsertSQL {
-	for _, expr := range expressions {
-		s.conflictActions = append(s.conflictActions, expr)
-	}
-	return s
-}
-
-// DoUpdateAll is like DoUpdate but update every field.
-func (s *InsertSQL) DoUpdateAll() *InsertSQL {
-	for _, field := range s.fields {
-		s.conflictActions = append(s.conflictActions, field+" = EXCLUDED."+field)
-	}
-	return s
-}
-
-// DoUpdateAllExcept is like DoUpdateAll but except some field names.
-func (s *InsertSQL) DoUpdateAllExcept(fields ...string) *InsertSQL {
-outer:
-	for _, field := range s.fields {
-		for _, f := range fields {
-			if f == field {
-				continue outer
+	if sql != "" {
+		if s.conflictTargets != nil {
+			var actions []string
+			if s.updateAll {
+				for _, field := range fields {
+					actions = append(actions, field+" = EXCLUDED."+field)
+				}
+			} else if len(s.updateAllExcept) > 0 {
+			outer:
+				for _, field := range fields {
+					for _, except := range s.updateAllExcept {
+						if field == except {
+							continue outer
+						}
+					}
+					actions = append(actions, field+" = EXCLUDED."+field)
+				}
+			}
+			if s.conflictActions != nil {
+				if actions == nil {
+					actions = []string{}
+				}
+				actions = append(actions, s.conflictActions...)
+			}
+			if actions != nil {
+				action := strings.Join(actions, ", ")
+				if action == "" {
+					action = "DO NOTHING"
+				} else {
+					action = "DO UPDATE SET " + action
+				}
+				target := strings.Join(s.conflictTargets, ", ")
+				if target != "" && !strings.HasPrefix(target, "(") {
+					target = "(" + target + ")"
+				}
+				if target == "" {
+					sql += " ON CONFLICT " + action
+				} else {
+					sql += " ON CONFLICT " + target + " " + action
+				}
 			}
 		}
-		s.conflictActions = append(s.conflictActions, field+" = EXCLUDED."+field)
-	}
-	return s
-}
-
-// Perform operations on the chain.
-func (s *InsertSQL) Tap(funcs ...func(*InsertSQL) *InsertSQL) *InsertSQL {
-	for i := range funcs {
-		s = funcs[i](s)
-	}
-	return s
-}
-
-func (s InsertSQL) String() string {
-	sql := s.sql
-	if s.conflictTargets != nil && s.conflictActions != nil {
-		action := strings.Join(s.conflictActions, ", ")
-		if action == "" {
-			action = "DO NOTHING"
-		} else {
-			action = "DO UPDATE SET " + action
-		}
-		target := strings.Join(s.conflictTargets, ", ")
-		if target != "" && !strings.HasPrefix(target, "(") {
-			target = "(" + target + ")"
-		}
-		if sql == "" {
-			return sql
-		}
-		if target == "" {
-			sql += " ON CONFLICT " + action
-		} else {
-			sql += " ON CONFLICT " + target + " " + action
+		if s.outputExpression != "" {
+			sql += " RETURNING " + s.outputExpression
 		}
 	}
-	if s.outputExpression != "" {
-		if sql == "" {
-			return sql
-		}
-		sql += " RETURNING " + s.outputExpression
-	}
-	return sql
+	return s.model.convertValues(sql, values)
 }

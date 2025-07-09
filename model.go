@@ -380,6 +380,13 @@ func (m *Model) SetConnection(db db.DB) *Model {
 	return m
 }
 
+func (m *Model) convertValues(sql string, values []interface{}) (string, []interface{}) {
+	if c, ok := m.connection.(db.ConvertParameters); ok {
+		return c.ConvertParameters(sql, values)
+	}
+	return sql, values
+}
+
 // Set the logger for the Model. Use logger.StandardLogger if you want to use
 // Go's built-in standard logging package. By default, no logger is used, so
 // the SQL statements are not printed to the console.

@@ -221,13 +221,33 @@ func TestDataTypes(t *testing.T) {
 
 func TestNewSQL(_t *testing.T) {
 	m := psql.NewModel(order{})
-	sql := "INSERT INTO orders (status) VALUES ($1)"
-	s1 := m.NewSQL(sql, "new")
+	sql := "INSERT INTO orders (status, trade_number) VALUES ($?, $?)"
+	s1 := m.NewSQL(sql, "new", "1234567890")
 	t := test{_t}
-	t.String("sql #1", s1.String(), sql)
+	t.String("sql #1", s1.String(), "INSERT INTO orders (status, trade_number) VALUES ($1, $2)")
 	s2 := s1.AsInsert()
-	t.String("sql #2", s2.OnConflict().DoNothing().String(), sql+" ON CONFLICT DO NOTHING")
-	t.String("sql #3", s1.String(), sql)
+	t.String("sql #2", s2.OnConflict().DoNothing().String(),
+		"INSERT INTO orders (status, trade_number) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+
+	sql = "UPDATE orders SET status = $?"
+	s3 := m.NewSQL(sql, "new")
+	t.String("sql #3", s3.String(), "UPDATE orders SET status = $1")
+	s4 := s3.AsUpdate()
+	sql, values := s4.Where("status = $?", "old").Returning("id").StringValues()
+	t.String("sql #4", sql, "UPDATE orders SET status = $2 WHERE status = $1 RETURNING id")
+	t.String("sql #4", fmt.Sprintf("%v", values), "[old new]")
+
+	sql = "DELETE FROM orders WHERE status = $?"
+	s5 := m.NewSQL(sql, "new")
+	t.String("sql #5", s5.String(), "DELETE FROM orders WHERE status = $1")
+	s6 := s5.AsDelete()
+	t.String("sql #6", s6.Returning("id").String(), "DELETE FROM orders WHERE status = $1 RETURNING id")
+
+	sql = "SELECT id, status FROM orders WHERE status = $?"
+	s7 := m.NewSQL(sql, "new")
+	t.String("sql #7", s7.String(), "SELECT id, status FROM orders WHERE status = $1")
+	s8 := s7.AsSelect()
+	t.String("sql #8", s8.Offset(10).String(), "SELECT id, status FROM orders WHERE status = $1 OFFSET 10")
 }
 
 func TestCRUDInPQ(t *testing.T) {
