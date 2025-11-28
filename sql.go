@@ -6,19 +6,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 	"time"
 	"unsafe"
 
 	"github.com/gopsql/db"
+	"github.com/gopsql/logger"
 )
 
 var (
-	ErrInvalidTarget       = errors.New("target must be pointer of a struct, slice or map")
-	ErrNoConnection        = errors.New("no connection")
-	ErrNoSQL               = errors.New("no sql statements to execute")
-	ErrTypeAssertionFailed = errors.New("type assertion failed")
+	ErrInvalidTarget            = errors.New("target must be pointer of a struct, slice or map")
+	ErrNoConnection             = errors.New("no connection")
+	ErrNoSQL                    = errors.New("no sql statements to execute")
+	ErrTypeAssertionFailed      = errors.New("type assertion failed")
+	ErrUnsupportedExplainTarget = errors.New("unsupported explain target type")
 )
 
 type (
@@ -28,9 +31,11 @@ type (
 			String() string
 			StringValues() (string, []interface{})
 		}
-		model  *Model
-		sql    string
-		values []interface{}
+		model          *Model
+		sql            string
+		values         []interface{}
+		explainTarget  interface{}
+		explainOptions []string
 	}
 
 	Tx = db.Tx
@@ -82,6 +87,26 @@ func (s *SQL) Tap(funcs ...func(*SQL) *SQL) *SQL {
 		s = funcs[i](s)
 	}
 	return s
+}
+
+// Explain sets up EXPLAIN output collection. When Query, QueryRow, or Execute
+// is called, an EXPLAIN statement will be executed first and the result will
+// be written to the target. Target can be *string, io.Writer, logger.Logger,
+// func(string), or func(...interface{}) (e.g. log.Println).
+// Options can include ANALYZE, VERBOSE, BUFFERS, COSTS, TIMING, FORMAT JSON, etc.
+func (s *SQL) Explain(target interface{}, options ...string) *SQL {
+	s.explainTarget = target
+	s.explainOptions = options
+	return s
+}
+
+// ExplainAnalyze is a shorthand for Explain(target, "ANALYZE", ...).
+// Target can be *string, io.Writer, logger.Logger, func(string), or func(...interface{}).
+// Note: The ANALYZE option causes the statement to be actually executed,
+// not just planned. Use with caution on INSERT, UPDATE, DELETE statements
+// as they will modify your data.
+func (s *SQL) ExplainAnalyze(target interface{}, options ...string) *SQL {
+	return s.Explain(target, append([]string{"ANALYZE"}, options...)...)
 }
 
 func (s SQL) formattedSQL() string {
@@ -158,6 +183,10 @@ func (s SQL) QueryCtxTx(ctx context.Context, tx Tx, target interface{}) error {
 	sqlQuery, values := s.StringValues()
 	if sqlQuery == "" {
 		return nil
+	}
+
+	if err := s.runExplain(ctx, tx, sqlQuery, values); err != nil {
+		return err
 	}
 
 	var rv reflect.Value
@@ -386,6 +415,9 @@ func (s SQL) QueryRowCtxTx(ctx context.Context, tx Tx, dest ...interface{}) erro
 	if sqlQuery == "" {
 		return nil
 	}
+	if err := s.runExplain(ctx, tx, sqlQuery, values); err != nil {
+		return err
+	}
 	start := time.Now()
 	defer s.log(sqlQuery, values, start)
 	if tx != nil {
@@ -440,6 +472,9 @@ func (s SQL) ExecuteCtxTx(ctx context.Context, tx Tx, dest ...interface{}) error
 	if sqlQuery == "" {
 		return ErrNoSQL
 	}
+	if err := s.runExplain(ctx, tx, sqlQuery, values); err != nil {
+		return err
+	}
 	start := time.Now()
 	defer s.log(sqlQuery, values, start)
 	if tx != nil {
@@ -450,6 +485,63 @@ func (s SQL) ExecuteCtxTx(ctx context.Context, tx Tx, dest ...interface{}) error
 
 func (s SQL) log(sql string, args []interface{}, startTime time.Time) {
 	s.model.log(sql, args, time.Since(startTime))
+}
+
+// runExplain executes EXPLAIN on the given SQL and writes result to explainTarget.
+func (s SQL) runExplain(ctx context.Context, tx Tx, sqlQuery string, values []interface{}) error {
+	if s.explainTarget == nil {
+		return nil
+	}
+	explainSQL := "EXPLAIN"
+	if len(s.explainOptions) > 0 {
+		explainSQL += " (" + strings.Join(s.explainOptions, ", ") + ")"
+	}
+	explainSQL += " " + sqlQuery
+
+	start := time.Now()
+	defer s.log(explainSQL, values, start)
+
+	var rows db.Rows
+	var err error
+	if tx != nil {
+		rows, err = tx.QueryContext(ctx, explainSQL, values...)
+	} else {
+		rows, err = s.model.connection.QueryContext(ctx, explainSQL, values...)
+	}
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var lines []string
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			return err
+		}
+		lines = append(lines, line)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	result := strings.Join(lines, "\n")
+	switch t := s.explainTarget.(type) {
+	case *string:
+		*t = result
+	case io.Writer:
+		_, err = t.Write([]byte(result + "\n"))
+		return err
+	case logger.Logger:
+		t.Debug(result)
+	case func(string):
+		t(result)
+	case func(...interface{}):
+		t(result)
+	default:
+		return ErrUnsupportedExplainTarget
+	}
+	return nil
 }
 
 func returnRowsAffected(dest []interface{}) func(db.Result, error) error {

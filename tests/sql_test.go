@@ -666,3 +666,50 @@ func (c echoContext) Bind(i interface{}) error {
 	}
 	return nil
 }
+
+func TestExplain(t *testing.T) {
+	conn := pgx.MustOpen(connStr)
+	defer conn.Close()
+
+	model := psql.NewModelTable("pg_class", conn)
+
+	// Test Explain with *string
+	var explain string
+	var count int
+	if err := model.Select("COUNT(*)").Explain(&explain).QueryRow(&count); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(explain, "Aggregate") {
+		t.Errorf("expected explain to contain 'Aggregate', got: %s", explain)
+	}
+
+	// Test ExplainAnalyze
+	var explainAnalyze string
+	if err := model.Select("COUNT(*)").ExplainAnalyze(&explainAnalyze).QueryRow(&count); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(explainAnalyze, "actual time") {
+		t.Errorf("expected explain analyze to contain 'actual time', got: %s", explainAnalyze)
+	}
+
+	// Test Explain with func target
+	var captured string
+	if err := model.Select("COUNT(*)").Explain(func(v ...interface{}) {
+		captured = v[0].(string)
+	}).QueryRow(&count); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(captured, "Aggregate") {
+		t.Errorf("expected captured to contain 'Aggregate', got: %s", captured)
+	}
+
+	// Test unsupported target
+	if err := model.Select("COUNT(*)").Explain(123).QueryRow(&count); err != psql.ErrUnsupportedExplainTarget {
+		t.Errorf("expected ErrUnsupportedExplainTarget, got: %v", err)
+	}
+
+	// Test nil target (no-op)
+	if err := model.Select("COUNT(*)").Explain(nil).QueryRow(&count); err != nil {
+		t.Fatal(err)
+	}
+}

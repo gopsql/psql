@@ -94,6 +94,25 @@ func (s *UpdateSQL) Tap(funcs ...func(*UpdateSQL) *UpdateSQL) *UpdateSQL {
 	return s
 }
 
+// Explain sets up EXPLAIN output collection. When Query, QueryRow, or Execute
+// is called, an EXPLAIN statement will be executed first and the result will
+// be written to the target. Target can be *string, io.Writer, logger.Logger,
+// func(string), or func(...interface{}) (e.g. log.Println).
+// Options can include ANALYZE, VERBOSE, BUFFERS, COSTS, TIMING, FORMAT JSON, etc.
+func (s *UpdateSQL) Explain(target interface{}, options ...string) *UpdateSQL {
+	s.SQL.Explain(target, options...)
+	return s
+}
+
+// ExplainAnalyze is a shorthand for Explain(target, "ANALYZE", ...).
+// Target can be *string, io.Writer, logger.Logger, func(string), or func(...interface{}).
+// Note: The ANALYZE option causes the statement to be actually executed,
+// not just planned. The UPDATE will actually modify data in the table.
+func (s *UpdateSQL) ExplainAnalyze(target interface{}, options ...string) *UpdateSQL {
+	s.SQL.ExplainAnalyze(target, options...)
+	return s
+}
+
 func (s *UpdateSQL) String() string {
 	sql, _ := s.StringValues()
 	return sql

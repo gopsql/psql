@@ -387,6 +387,11 @@ func (m *Model) convertValues(sql string, values []interface{}) (string, []inter
 	return sql, values
 }
 
+// Return the logger for the Model.
+func (m *Model) Logger() logger.Logger {
+	return m.logger
+}
+
 // Set the logger for the Model. Use logger.StandardLogger if you want to use
 // Go's built-in standard logging package. By default, no logger is used, so
 // the SQL statements are not printed to the console.
@@ -477,6 +482,19 @@ func (m Model) log(sql string, args []interface{}, elapsed time.Duration) {
 		prefix = strings.ToUpper(sql[:idx])
 	} else {
 		prefix = strings.ToUpper(sql)
+	}
+	if prefix == "EXPLAIN" {
+		rest := strings.TrimSpace(sql[7:])
+		if len(rest) > 0 && rest[0] == '(' {
+			if idx := strings.Index(rest, ")"); idx > -1 {
+				rest = strings.TrimSpace(rest[idx+1:])
+			}
+		}
+		if idx := strings.Index(rest, " "); idx > -1 {
+			prefix = strings.ToUpper(rest[:idx])
+		} else if len(rest) > 0 {
+			prefix = strings.ToUpper(rest)
+		}
 	}
 	var colored logger.ColoredString
 	switch prefix {

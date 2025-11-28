@@ -431,6 +431,26 @@ func (s *SelectSQL) Tap(funcs ...func(*SelectSQL) *SelectSQL) *SelectSQL {
 	return s
 }
 
+// Explain sets up EXPLAIN output collection. When Query, QueryRow, or Execute
+// is called, an EXPLAIN statement will be executed first and the result will
+// be written to the target. Target can be *string, io.Writer, logger.Logger,
+// func(string), or func(...interface{}) (e.g. log.Println).
+// Options can include ANALYZE, VERBOSE, BUFFERS, COSTS, TIMING, FORMAT JSON, etc.
+func (s *SelectSQL) Explain(target interface{}, options ...string) *SelectSQL {
+	s.SQL.Explain(target, options...)
+	return s
+}
+
+// ExplainAnalyze is a shorthand for Explain(target, "ANALYZE", ...).
+// Target can be *string, io.Writer, logger.Logger, func(string), or func(...interface{}).
+// Note: The ANALYZE option causes the statement to be actually executed,
+// not just planned. Use with caution on INSERT, UPDATE, DELETE statements
+// as they will modify your data.
+func (s *SelectSQL) ExplainAnalyze(target interface{}, options ...string) *SelectSQL {
+	s.SQL.ExplainAnalyze(target, options...)
+	return s
+}
+
 func (s *SelectSQL) String() string {
 	var sql string
 	if s.with != "" {

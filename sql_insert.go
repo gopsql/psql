@@ -90,6 +90,25 @@ func (s *InsertSQL) Tap(funcs ...func(*InsertSQL) *InsertSQL) *InsertSQL {
 	return s
 }
 
+// Explain sets up EXPLAIN output collection. When Query, QueryRow, or Execute
+// is called, an EXPLAIN statement will be executed first and the result will
+// be written to the target. Target can be *string, io.Writer, logger.Logger,
+// func(string), or func(...interface{}) (e.g. log.Println).
+// Options can include ANALYZE, VERBOSE, BUFFERS, COSTS, TIMING, FORMAT JSON, etc.
+func (s *InsertSQL) Explain(target interface{}, options ...string) *InsertSQL {
+	s.SQL.Explain(target, options...)
+	return s
+}
+
+// ExplainAnalyze is a shorthand for Explain(target, "ANALYZE", ...).
+// Target can be *string, io.Writer, logger.Logger, func(string), or func(...interface{}).
+// Note: The ANALYZE option causes the statement to be actually executed,
+// not just planned. The INSERT will actually insert data into the table.
+func (s *InsertSQL) ExplainAnalyze(target interface{}, options ...string) *InsertSQL {
+	s.SQL.ExplainAnalyze(target, options...)
+	return s
+}
+
 func (s InsertSQL) String() string {
 	sql, _ := s.StringValues()
 	return sql
