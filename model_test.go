@@ -157,6 +157,8 @@ func TestModel(_t *testing.T) {
 		"SELECT id FROM admins JOIN b ON b.id = admins.id")
 	sql, values := m1.WITH("a2", m1.Select("id").Where("id = $?", 1)).Where("name = $?", "new").Select("id").StringValues()
 	t.String(sql, "WITH a2 AS (SELECT id FROM admins WHERE id = $1) SELECT id FROM admins WHERE name = $2")
+	sql, values = m1.WITH("a2 as materialized", m1.Select("id").Where("id = $?", 1)).Where("name = $?", "new").Select("id").StringValues()
+	t.String(sql, "WITH a2 as materialized (SELECT id FROM admins WHERE id = $1) SELECT id FROM admins WHERE name = $2")
 	t.String(fmt.Sprint(values), "[1 new]")
 	t.String(
 		m1.With("RECURSIVE a(n) AS (VALUES (1) UNION ALL SELECT n+1 FROM a WHERE n < 3)").

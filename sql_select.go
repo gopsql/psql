@@ -403,6 +403,7 @@ func (s *SelectSQL) With(expression string, args ...interface{}) *SelectSQL {
 }
 
 // Adds WITH from another SELECT statement to SELECT statement.
+// You can add "AS MATERIALIZED" or "AS NOT MATERIALIZED" to the name.
 func (s *SelectSQL) WITH(name string, sql *SelectSQL) *SelectSQL {
 	sqlQuery := sql.String()
 	if offset := len(s.args); offset > 0 {
@@ -418,7 +419,11 @@ func (s *SelectSQL) WITH(name string, sql *SelectSQL) *SelectSQL {
 	if s.with != "" {
 		s.with += ", "
 	}
-	s.with += name + " AS (" + sqlQuery + ")"
+	if strings.Contains(strings.ToLower(name), " as") {
+		s.with += name + " (" + sqlQuery + ")"
+	} else {
+		s.with += name + " AS (" + sqlQuery + ")"
+	}
 	s.args = append(s.args, sql.args...)
 	return s
 }
