@@ -1,6 +1,7 @@
 package psql
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -190,7 +191,13 @@ func (s *SelectSQL) Delete() *DeleteSQL {
 // MustExists is like Exists but panics if existence check operation fails.
 // Returns true if record exists, false if not exists.
 func (s *SelectSQL) MustExists() bool {
-	exists, err := s.Exists()
+	return s.MustExistsCtxTx(context.Background(), nil)
+}
+
+// MustExistsCtxTx is like ExistsCtxTx but panics if existence check operation fails.
+// Returns true if record exists, false if not exists.
+func (s *SelectSQL) MustExistsCtxTx(ctx context.Context, tx Tx) bool {
+	exists, err := s.ExistsCtxTx(ctx, tx)
 	if err != nil {
 		panic(err)
 	}
@@ -200,8 +207,14 @@ func (s *SelectSQL) MustExists() bool {
 // Create and execute a SELECT 1 AS one statement. Returns true if record
 // exists, false if not exists.
 func (s *SelectSQL) Exists() (exists bool, err error) {
+	return s.ExistsCtxTx(context.Background(), nil)
+}
+
+// Create and execute a SELECT 1 AS one statement. Returns true if record
+// exists, false if not exists.
+func (s *SelectSQL) ExistsCtxTx(ctx context.Context, tx Tx) (exists bool, err error) {
 	var ret int
-	err = s.ResetSelect("1 AS one").QueryRow(&ret)
+	err = s.ResetSelect("1 AS one").QueryRowCtxTx(ctx, tx, &ret)
 	if err == s.model.connection.ErrNoRows() {
 		err = nil
 		return
@@ -212,7 +225,12 @@ func (s *SelectSQL) Exists() (exists bool, err error) {
 
 // MustCount is like Count but panics if count operation fails.
 func (s *SelectSQL) MustCount(optional ...string) int {
-	count, err := s.Count(optional...)
+	return s.MustCountCtxTx(context.Background(), nil, optional...)
+}
+
+// MustCountCtxTx is like CountCtxTx but panics if count operation fails.
+func (s *SelectSQL) MustCountCtxTx(ctx context.Context, tx Tx, optional ...string) int {
+	count, err := s.CountCtxTx(ctx, tx, optional...)
 	if err != nil {
 		panic(err)
 	}
@@ -222,13 +240,19 @@ func (s *SelectSQL) MustCount(optional ...string) int {
 // Create and execute a SELECT COUNT(*) statement, return number of rows.
 // To count in a different way: Count("COUNT(DISTINCT authors.id)").
 func (s *SelectSQL) Count(optional ...string) (count int, err error) {
+	return s.CountCtxTx(context.Background(), nil, optional...)
+}
+
+// Create and execute a SELECT COUNT(*) statement, return number of rows.
+// To count in a different way: Count("COUNT(DISTINCT authors.id)").
+func (s *SelectSQL) CountCtxTx(ctx context.Context, tx Tx, optional ...string) (count int, err error) {
 	var expr string
 	if len(optional) > 0 && optional[0] != "" {
 		expr = optional[0]
 	} else {
 		expr = "COUNT(*)"
 	}
-	err = s.ResetSelect(expr).QueryRow(&count)
+	err = s.ResetSelect(expr).QueryRowCtxTx(ctx, tx, &count)
 	return
 }
 

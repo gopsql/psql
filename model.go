@@ -1,6 +1,7 @@
 package psql
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -403,7 +404,13 @@ func (m *Model) SetLogger(logger logger.Logger) *Model {
 // MustExists is like Exists but panics if existence check operation fails.
 // Returns true if record exists, false if not exists.
 func (m Model) MustExists() bool {
-	exists, err := m.Exists()
+	return m.MustExistsCtxTx(context.Background(), nil)
+}
+
+// MustExistsCtxTx is like ExistsCtxTx but panics if existence check operation fails.
+// Returns true if record exists, false if not exists.
+func (m Model) MustExistsCtxTx(ctx context.Context, tx Tx) bool {
+	exists, err := m.ExistsCtxTx(ctx, tx)
 	if err != nil {
 		panic(err)
 	}
@@ -413,12 +420,23 @@ func (m Model) MustExists() bool {
 // Create and execute a SELECT 1 AS one statement. Returns true if record
 // exists, false if not exists.
 func (m Model) Exists() (exists bool, err error) {
-	return m.newSelect().Exists()
+	return m.ExistsCtxTx(context.Background(), nil)
+}
+
+// Create and execute a SELECT 1 AS one statement. Returns true if record
+// exists, false if not exists.
+func (m Model) ExistsCtxTx(ctx context.Context, tx Tx) (exists bool, err error) {
+	return m.newSelect().ExistsCtxTx(ctx, tx)
 }
 
 // MustCount is like Count but panics if count operation fails.
 func (m Model) MustCount(optional ...string) int {
-	count, err := m.Count(optional...)
+	return m.MustCountCtxTx(context.Background(), nil, optional...)
+}
+
+// MustCountCtxTx is like CountCtxTx but panics if count operation fails.
+func (m Model) MustCountCtxTx(ctx context.Context, tx Tx, optional ...string) int {
+	count, err := m.CountCtxTx(ctx, tx, optional...)
 	if err != nil {
 		panic(err)
 	}
@@ -427,7 +445,12 @@ func (m Model) MustCount(optional ...string) int {
 
 // Create and execute a SELECT COUNT(*) statement, return number of rows.
 func (m Model) Count(optional ...string) (count int, err error) {
-	return m.newSelect().Count(optional...)
+	return m.CountCtxTx(context.Background(), nil, optional...)
+}
+
+// Create and execute a SELECT COUNT(*) statement, return number of rows.
+func (m Model) CountCtxTx(ctx context.Context, tx Tx, optional ...string) (count int, err error) {
+	return m.newSelect().CountCtxTx(ctx, tx, optional...)
 }
 
 // MustAssign is like Assign but panics if assign operation fails.
