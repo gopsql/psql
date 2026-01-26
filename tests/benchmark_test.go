@@ -17,17 +17,24 @@ import (
 	"github.com/gopsql/gopg"
 	"github.com/gopsql/pgx"
 	"github.com/gopsql/pq"
+	"github.com/gopsql/psql"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
 )
 
 const (
-	dbConn      = "postgres://localhost:5432/gopsqltests?sslmode=disable"
 	numberRows  = 100
 	selectQuery = "SELECT data FROM bench LIMIT 100"
 )
 
+var dbConn string
+
 func init() {
+	dbConn = os.Getenv("DBCONNSTR")
+	if dbConn == "" {
+		dbConn = "postgres://localhost:5432/gopsqltests?sslmode=disable"
+	}
+
 	conn := pq.MustOpen(dbConn)
 	defer conn.Close()
 	fmt.Println("Recreating bench table")
@@ -58,9 +65,13 @@ func randomString() string {
 }
 
 func benchmark(b *testing.B, conn db.DB) {
+	b.ReportAllocs()
+	m := psql.NewModelTable("bench", conn)
 	for i := 0; i < b.N; i++ {
 		var randomStrings []string
-		conn.QueryRow(selectQuery).Scan(&randomStrings)
+		if err := m.Select("data").Limit(100).Query(&randomStrings); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
@@ -85,47 +96,52 @@ func BenchmarkGOPG(b *testing.B) {
 func BenchmarkPQNative(b *testing.B) {
 	c, err := sql.Open("postgres", dbConn)
 	if err != nil {
-		panic(err)
+		b.Fatal(err)
 	}
+	defer c.Close()
 	if err := c.Ping(); err != nil {
-		panic(err)
+		b.Fatal(err)
 	}
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		rows, err := c.Query(selectQuery)
 		if err != nil {
-			panic(err)
+			b.Fatal(err)
 		}
-		var randomStrings []string
+		randomStrings := make([]string, 0, numberRows)
 		for rows.Next() {
 			var randomString string
 			rows.Scan(&randomString)
 			randomStrings = append(randomStrings, randomString)
 		}
 		if err := rows.Err(); err != nil {
-			panic(err)
+			b.Fatal(err)
 		}
 		rows.Close()
 	}
 }
 
 func BenchmarkPGXNative(b *testing.B) {
-	pool, err := pgxpool.New(context.Background(), dbConn)
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dbConn)
 	if err != nil {
-		panic(err)
+		b.Fatal(err)
 	}
+	defer pool.Close()
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		rows, err := pool.Query(context.Background(), selectQuery)
+		rows, err := pool.Query(ctx, selectQuery)
 		if err != nil {
-			panic(err)
+			b.Fatal(err)
 		}
-		var randomStrings []string
+		randomStrings := make([]string, 0, numberRows)
 		for rows.Next() {
 			var randomString string
 			rows.Scan(&randomString)
 			randomStrings = append(randomStrings, randomString)
 		}
 		if err := rows.Err(); err != nil {
-			panic(err)
+			b.Fatal(err)
 		}
 		rows.Close()
 	}
@@ -134,16 +150,17 @@ func BenchmarkPGXNative(b *testing.B) {
 func BenchmarkGOPGNative(b *testing.B) {
 	opt, err := pg.ParseURL(dbConn)
 	if err != nil {
-		panic(err)
+		b.Fatal(err)
 	}
-	db := pg.Connect(opt)
-	if err := db.Ping(context.Background()); err != nil {
-		panic(err)
+	conn := pg.Connect(opt)
+	if err := conn.Ping(context.Background()); err != nil {
+		b.Fatal(err)
 	}
-	defer db.Close()
+	defer conn.Close()
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		var randomStrings []string
-		db.Query(&randomStrings, selectQuery)
+		conn.Query(&randomStrings, selectQuery)
 	}
 }
 
