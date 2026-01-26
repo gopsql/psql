@@ -1,7 +1,7 @@
 package psql
 
 import (
-	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -9,26 +9,23 @@ import (
 
 func init() {
 	DefaultColumnNamer = ToUnderscore
+	DefaultTableNamer = ToPluralUnderscore
 }
 
+// Test structs for Model tests
 type (
-	test struct {
-		*testing.T
-		i int
-	}
-
-	userAlike struct {
+	basicUser struct {
 		Id       int
 		Name     string
 		Password string
 	}
 
 	admin struct {
-		userAlike
+		basicUser
 	}
 
 	user struct {
-		userAlike
+		basicUser
 		Phone string
 	}
 
@@ -45,309 +42,28 @@ type (
 		Name  string `json:"name"`
 		Price int    `json:"PRICE"`
 	}
-)
 
-func TestModel(_t *testing.T) {
-	t := test{_t, 0}
-
-	m1 := NewModel(admin{})
-	t.String(strings.Join(m1.Columns(), ","), "id,name,password")
-	t.String(m1.ToColumnName("FooBar"), "foo_bar")
-	m1.SetColumnNamer(nil)
-	t.String(strings.Join(m1.Columns(), ","), "Id,Name,Password")
-	t.String(m1.ToColumnName("FooBar"), "FooBar")
-	m1.SetColumnNamer(DefaultColumnNamer)
-	t.String(m1.FieldByName("Name").ColumnName, "name")
-	t.Nil(m1.FieldByName("name"), (*Field)(nil))
-	t.String(m1.tableName, "admins")
-	t.Int(len(m1.modelFields), 3)
-	t.Int(len(m1.WithoutFields("Name").modelFields), 2)
-	t.Int(len(m1.WithoutFields("Name", "Password").modelFields), 1)
-	t.Int(len(m1.modelFields), 3)
-	p := m1.Permit()
-	t.Int(len(p.PermittedFields()), 0)
-	p = m1.Permit("Invalid")
-	t.Int(len(p.PermittedFields()), 0)
-	p = m1.Permit("Id")
-	t.Int(len(p.PermittedFields()), 1)
-	p = m1.Permit("Id", "Id")
-	t.Int(len(p.PermittedFields()), 1)
-	t.Int(len(p.Filter(RawChanges{
-		"Id":   1,
-		"Name": "haha",
-	})), 1)
-	t.Int(len(p.Filter(`{
-		"Id":   1,
-		"Name": "haha"
-	}`)), 1)
-	t.Int(len(p.Filter([]byte(`{
-		"Id":   1,
-		"Name": "haha"
-	}`))), 1)
-	t.Int(len(p.Filter(strings.NewReader(`{
-		"Id":   1,
-		"Name": "haha"
-	}`))), 1)
-	t.Int(len(p.Filter(struct {
-		Id   int
-		Name string
-	}{})), 1)
-	p = m1.Permit()
-	t.Int(len(p.PermittedFields()), 0)
-	t.Int(len(p.Filter(map[string]interface{}{
-		"Name": "haha",
-	})), 0)
-	p = m1.PermitAllExcept("Password")
-	t.Int(len(p.PermittedFields()), 2)
-	p = m1.PermitAllExcept("Password", "Password")
-	t.Int(len(p.PermittedFields()), 2)
-	t.Int(len(p.Filter(map[string]interface{}{
-		"Name":     "haha",
-		"Password": "reset",
-		"BadData":  "foobar",
-	})), 1)
-	p = m1.PermitAllExcept()
-	t.Int(len(p.PermittedFields()), 3)
-	p = m1.PermitAllExcept("Invalid")
-	t.Int(len(p.PermittedFields()), 3)
-	p = m1.Permit()
-	c := m1.Changes(RawChanges{
-		"Name":    "test",
-		"BadData": "foobar",
-	})
-	t.Int(len(c), 1)
-	var f Field
-	for _f := range c {
-		f = _f
-		break
-	}
-	t.String(f.Name, "Name")
-	t.String(m1.Find().String(), "SELECT id, name, password FROM admins")
-	t.String(m1.Find(AddTableName).String(), "SELECT admins.id, admins.name, admins.password FROM admins")
-	t.String(m1.Find().Where("id = $1", 1).String(), "SELECT id, name, password FROM admins WHERE id = $1")
-	t.String(m1.Find().Select("name").String(), "SELECT id, name, password, name FROM admins")
-	t.String(m1.Select("id").Where("id = $? AND id = $?", 1).String(), "SELECT id FROM admins WHERE id = $1 AND id = $1")
-	t.String(m1.Select("id").Where("id = $? AND id = $?", 1, 2).String(), "SELECT id FROM admins WHERE id = $? AND id = $?")
-	t.Strings(
-		m1.Select("id").Where("id = $?", 1).Where("name = $?", "a").String(),
-		m1.Select("id").WHERE("id", "=", 1, "name", "=", "a").String(),
-		"SELECT id FROM admins WHERE (id = $1) AND (name = $2)",
-	)
-	t.String(m1.Select("name").Find().String(), "SELECT id, name, password FROM admins")
-	t.String(m1.Select("name").Find("--no-reset").String(), "SELECT name, id, name, password FROM admins")
-	t.String(m1.Where("id = $1", 1).Find().String(), "SELECT id, name, password FROM admins WHERE id = $1")
-	t.String(m1.Where("id = $1", 1).Find(AddTableName).String(), "SELECT admins.id, admins.name, admins.password FROM admins WHERE id = $1")
-	t.String(m1.Select("id", "name").String(), "SELECT id, name FROM admins")
-	t.String(m1.Select("id", "name").Where("status = $1", "new").String(), "SELECT id, name FROM admins WHERE status = $1")
-	t.String(m1.Where("status = $1", "new").Select("id", "name").String(), "SELECT id, name FROM admins WHERE status = $1")
-	t.String(m1.Select("id").OrderBy("id DESC").String(), "SELECT id FROM admins ORDER BY id DESC")
-	t.String(m1.Select("id").OrderBy("id DESC").Limit(2).String(), "SELECT id FROM admins ORDER BY id DESC LIMIT 2")
-	t.String(m1.Select("id").OrderBy("id DESC").Limit(2).Limit(nil).String(), "SELECT id FROM admins ORDER BY id DESC")
-	t.String(m1.Select("id").Offset("10").Limit(2).String(), "SELECT id FROM admins LIMIT 2 OFFSET 10")
-	t.String(m1.Select("array_agg(id)").GroupBy("name", "status").String(), "SELECT array_agg(id) FROM admins GROUP BY name, status")
-	t.Strings(
-		m1.Select("sum(price)").Where("id > $1", 1).GroupBy("kind").Having("sum(price) < $2", 3).String(),
-		m1.Select("sum(price)").WHERE("id", ">", 1).GroupBy("kind").Having("sum(price) < $?", 3).String(),
-		"SELECT sum(price) FROM admins WHERE id > $1 GROUP BY kind HAVING sum(price) < $2",
-	)
-	t.String(m1.Select("id").Join("JOIN a ON a.id = admins.id").String(), "SELECT id FROM admins JOIN a ON a.id = admins.id")
-	t.String(m1.Select("id").Join("JOIN a ON a.id = admins.id").Join("JOIN b ON b.id = admins.id").String(),
-		"SELECT id FROM admins JOIN a ON a.id = admins.id JOIN b ON b.id = admins.id")
-	t.String(m1.Select("id").Join("JOIN a ON a.id = admins.id").ResetJoin("JOIN b ON b.id = admins.id").String(),
-		"SELECT id FROM admins JOIN b ON b.id = admins.id")
-	sql, values := m1.WITH("a2", m1.Select("id").Where("id = $?", 1)).Where("name = $?", "new").Select("id").StringValues()
-	t.String(sql, "WITH a2 AS (SELECT id FROM admins WHERE id = $1) SELECT id FROM admins WHERE name = $2")
-	sql, values = m1.WITH("a2 as materialized", m1.Select("id").Where("id = $?", 1)).Where("name = $?", "new").Select("id").StringValues()
-	t.String(sql, "WITH a2 as materialized (SELECT id FROM admins WHERE id = $1) SELECT id FROM admins WHERE name = $2")
-	t.String(fmt.Sprint(values), "[1 new]")
-	t.String(
-		m1.With("RECURSIVE a(n) AS (VALUES (1) UNION ALL SELECT n+1 FROM a WHERE n < 3)").
-			With("b(n) AS (VALUES (10) UNION ALL SELECT n+1 FROM b WHERE n < 12)").
-			Select("a.n AS a_value, b.n AS b_value, a.n + b.n AS total").
-			ResetFrom("a").From("b").String(),
-		"WITH RECURSIVE a(n) AS (VALUES (1) UNION ALL SELECT n+1 FROM a WHERE n < 3), "+
-			"b(n) AS (VALUES (10) UNION ALL SELECT n+1 FROM b WHERE n < 12) "+
-			"SELECT a.n AS a_value, b.n AS b_value, a.n + b.n AS total FROM a, b")
-	t.String(m1.Delete().String(), "DELETE FROM admins")
-	t.String(m1.Delete().Returning("id").String(), "DELETE FROM admins RETURNING id")
-	t.String(m1.Delete().Using("users", "orders").
-		Where("admins.user_id = users.id").Where("admins.order_id = orders.id").
-		Where("orders.name = $1", "foobar").Returning("admins.id").String(),
-		"DELETE FROM admins USING users, orders WHERE (admins.user_id = users.id) "+
-			"AND (admins.order_id = orders.id) AND (orders.name = $1) RETURNING admins.id")
-	t.Strings(
-		m1.Where("id = $1", 1).Delete().String(),
-		m1.WHERE("id", "=", 1).Delete().String(),
-		"DELETE FROM admins WHERE id = $1",
-	)
-	t.Strings(
-		m1.Delete().Where("id = $1", 1).String(),
-		m1.Delete().WHERE("id", "=", 1).String(),
-		"DELETE FROM admins WHERE id = $1",
-	)
-	t.Strings(
-		m1.Delete().Where("id = $1", 1).Where("name = $2", "foobar").String(),
-		m1.Delete().WHERE("id", "=", 1, "name", "=", "foobar").String(),
-		"DELETE FROM admins WHERE (id = $1) AND (name = $2)",
-	)
-	t.String(m1.Insert(c).String(), "INSERT INTO admins (name) VALUES ($1)")
-	t.String(m1.Insert(c).Returning("id").String(), "INSERT INTO admins (name) VALUES ($1) RETURNING id")
-	t.String(m1.Insert(c).Returning("id AS foobar", "name").String(), "INSERT INTO admins (name) VALUES ($1) RETURNING id AS foobar, name")
-	t.String(m1.Insert(c).OnConflict().String(), "INSERT INTO admins (name) VALUES ($1)")
-	t.String(m1.Insert(c).DoNothing().String(), "INSERT INTO admins (name) VALUES ($1)")
-	t.String(m1.Insert(c).OnConflict().DoNothing().String(), "INSERT INTO admins (name) VALUES ($1) ON CONFLICT DO NOTHING")
-	t.String(m1.Insert(c).DoNothing().OnConflict().String(), "INSERT INTO admins (name) VALUES ($1) ON CONFLICT DO NOTHING")
-	t.String(m1.Insert(c).Returning("id").OnConflict().DoNothing().String(),
-		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT DO NOTHING RETURNING id")
-	t.String(m1.Insert(c).OnConflict("name").DoNothing().String(),
-		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
-	t.String(m1.Insert(c).OnConflict("lower(name)").DoNothing().String(),
-		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (lower(name)) DO NOTHING")
-	t.String(m1.Insert(c).OnConflict("(name) WHERE TRUE").DoNothing().String(),
-		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (name) WHERE TRUE DO NOTHING")
-	t.String(m1.Insert(c).OnConflict("name", "password").DoNothing().String(),
-		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (name, password) DO NOTHING")
-	t.String(m1.Insert(c).OnConflict("name").DoUpdate("password = NULL").String(),
-		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET password = NULL")
-	t.String(m1.Insert(c).OnConflict("name").DoUpdateAll().String(),
-		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name")
-	t.String(m1.Insert(c).OnConflict("name").DoUpdateAll().DoUpdate("password = NULL").String(),
-		"INSERT INTO admins (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name, password = NULL")
-	t.String(m1.Update(c).String(), "UPDATE admins SET name = $1")
-	t.String(m1.Update(c).Returning("id").String(), "UPDATE admins SET name = $1 RETURNING id")
-	t.String(m1.Where("id = $1", 1).Update(c).String(),
-		"UPDATE admins SET name = $2 WHERE id = $1")
-	t.String(m1.Update(c).Where("id = $1", 1).String(),
-		"UPDATE admins SET name = $2 WHERE id = $1")
-	t.Strings(
-		m1.Update(c).Where("name = $1", "foo").Where("id = $2", 1).String(),
-		m1.Update(c).WHERE("name", "=", "foo", "id", "=", 1).String(),
-		"UPDATE admins SET name = $3 WHERE (name = $1) AND (id = $2)",
-	)
-	t.String(m1.Update("Name", String("CONCAT(name, '1')")).String(),
-		"UPDATE admins SET name = CONCAT(name, '1')")
-
-	m2 := NewModel(category{})
-	t.String(m2.Find().String(), "SELECT id, created_at, updated_at, meta FROM categories")
-	t.String(m2.Find().Select("id").String(), "SELECT id, created_at, updated_at, id, meta FROM categories")
-	t.String(m2.Find(AddTableName).Select("id").String(),
-		"SELECT categories.id, categories.created_at, categories.updated_at, id, categories.meta FROM categories")
-	t.String(m2.TypeName(), "category")
-	t.String(m2.tableName, "categories")
-	p = m2.Permit("Names", "Picture")
-	t.Int(len(p.PermittedFields()), 2)
-	m2c := m2.Changes(RawChanges{
-		"Picture": "https://hello/world",
-	})
-	sql, values = m2.Insert(m2c).StringValues()
-	t.String(sql, "INSERT INTO categories (meta) VALUES ($1)")
-	t.String(values[0].(string), `{"picture":"https://hello/world"}`)
-	t.String(m2.Update(m2c).String(), "UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', $1)")
-	t.String(m2.Update("Picture", String("to_jsonb(UPPER(COALESCE(meta->>'picture', '')))")).String(),
-		"UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', to_jsonb(UPPER(COALESCE(meta->>'picture', ''))))")
-	t.String(m2.Update(
-		"Id", String("id + 1"),
-		"Picture", String("'null'::jsonb"),
-		"CreatedAt", String("now()"),
-	).String(),
-		"UPDATE categories SET id = id + 1, created_at = now(), meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', 'null'::jsonb)")
-	_, values = m2.Update(m2c).StringValues()
-	t.String(values[0].(string), `"https://hello/world"`)
-	t.String(m2.Update(m2c).Where("id = $1", 1).String(),
-		"UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{picture}', $2) WHERE id = $1")
-	m2c2 := m2.Changes(RawChanges{
-		"Names": []map[string]string{
-			{
-				"key":   "en_US",
-				"value": "Category",
-			},
-		},
-	})
-	sql, values = m2.Insert(m2c2).StringValues()
-	t.String(sql, "INSERT INTO categories (meta) VALUES ($1)")
-	t.String(values[0].(string), `{"names":[{"key":"en_US","value":"Category"}]}`)
-	sql, values = m2.Update(m2c2).StringValues()
-	t.String(sql, "UPDATE categories SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{names}', $1)")
-	t.String(values[0].(string), `[{"key":"en_US","value":"Category"}]`)
-	t.String(m2.Insert(
-		m2c2,
-		m2.CreatedAt(),
-		m2.UpdatedAt(),
-	).String(), "INSERT INTO categories (created_at, updated_at, meta) VALUES ($1, $2, $3)")
-	t.String(m2.Update(
-		m2c2,
-		m2.CreatedAt(),
-		m2.UpdatedAt(),
-	).String(), "UPDATE categories SET created_at = $1, updated_at = $2, meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{names}', $3)")
-
-	m3 := NewModel(user{})
-	t.String(m3.TypeName(), "user")
-	t.String(m3.tableName, "users")
-	t.Int(len(m3.modelFields), 4)
-
-	m4 := NewModel(product{})
-	t.String(m4.TypeName(), "product")
-	t.String(m4.tableName, "products")
-	t.Int(len(m4.modelFields), 3)
-	x0 := "INSERT INTO products (name, price) VALUES ($1, $2)"
-	x1 := m4.Insert(
-		m4.Changes(RawChanges{"name": "test"}),
-		m4.Changes(RawChanges{"PRICE": 2}),
-	)
-	t.String(x1.String(), x0)
-	x2 := m4.Insert(
-		m4.FieldChanges(RawChanges{"Name": "test"}),
-		m4.FieldChanges(RawChanges{"Price": 2}),
-	)
-	t.String(x2.String(), x0)
-	x3 := m4.Insert("Name", "test", "Price", 2)
-	t.String(x3.String(), x0)
-	x4 := m4.Insert(
-		"PRICE", 1,
-		m4.Changes(RawChanges{
-			"name": "test",
-		}),
-		"Price", 2,
-	)
-	t.String(x4.String(), x0)
-	x5 := m4.Insert(
-		"Name", "foobar",
-		"Price", 2, 3, 4,
-		"Price", 10,
-	)
-	x5sql, x5values := x5.StringValues()
-	t.String(x5sql, x0)
-	t.String(fmt.Sprint(x5values), "[foobar 10]")
-	x6 := m4.Insert(
-		m4.FieldChanges(RawChanges{"Name": "foobar"}),
-		m4.FieldChanges(RawChanges{"Price": 10}),
-	)
-	x6sql, x6values := x6.StringValues()
-	t.String(x6sql, x5sql)
-	t.String(fmt.Sprint(x6values), fmt.Sprint(x5values))
-	x7 := m4.Update(
-		"Price", 1,
-	)
-	t.String(x7.String(), "UPDATE products SET price = $1")
-	t.String(m4.Update("Price", String("price + 1")).String(), "UPDATE products SET price = price + 1")
-	var pp product
-	m4.MustAssign(
-		&pp,
-		"Price", 100,
-	)
-	t.Int(pp.Price, 100)
-}
-
-type (
-	dataTypeTest struct {
+	dataTypeTestStruct struct {
 		Test0 string
 		Test1 string
 		Test2 string `dataType:"test"`
 		Test3 string `dataType:"hello"`
 	}
+
+	schemaTestStruct0 struct {
+		Test0 string
+	}
+
+	schemaTestStruct1 struct {
+		Test0 string
+	}
+
+	schemaTestStruct2 struct {
+		Test0 string
+	}
 )
 
-func (dataTypeTest) DataType(m Model, fieldName string) string {
+func (dataTypeTestStruct) DataType(m Model, fieldName string) string {
 	if fieldName == "Test1" {
 		return "foo"
 	}
@@ -357,109 +73,433 @@ func (dataTypeTest) DataType(m Model, fieldName string) string {
 	return ""
 }
 
-func TestDataType(_t *testing.T) {
-	t := test{_t, 0}
-	m := NewModel(dataTypeTest{})
-	dataTypes := m.ColumnDataTypes()
-	t.String(dataTypes["test0"], "text DEFAULT ''::text NOT NULL")
-	t.String(dataTypes["test1"], "foo")
-	t.String(dataTypes["test2"], "test")
-	t.String(dataTypes["test3"], "world")
+func (schemaTestStruct1) Schema() string {
+	return `CREATE VIEW schemaTestStruct1s AS SELECT 'yes' AS test0;`
 }
 
-type (
-	schema0Test struct {
-		Test0 string
-	}
-
-	schema1Test struct {
-		Test0 string
-	}
-
-	schema2Test struct {
-		Test0 string
-	}
-)
-
-func (schema1Test) Schema() string {
-	return `CREATE VIEW schema1Tests AS SELECT 'yes' AS test0;`
-}
-
-func (schema2Test) BeforeCreateSchema() string {
+func (schemaTestStruct2) BeforeCreateSchema() string {
 	return `-- comment b`
 }
 
-func (schema2Test) AfterCreateSchema() string {
+func (schemaTestStruct2) AfterCreateSchema() string {
 	return `-- comment a`
 }
 
-func TestSchema(_t *testing.T) {
-	t := test{_t, 0}
-	t.String(NewModel(schema0Test{}).Schema(), `CREATE TABLE schema0Tests (
+func TestNewModel(t *testing.T) {
+	t.Parallel()
+
+	t.Run("creates model from struct", func(t *testing.T) {
+		m := NewModel(admin{})
+		if m.tableName != "admins" {
+			t.Errorf("tableName = %q, want %q", m.tableName, "admins")
+		}
+		if len(m.modelFields) != 3 {
+			t.Errorf("len(modelFields) = %d, want %d", len(m.modelFields), 3)
+		}
+	})
+
+	t.Run("inherits fields from embedded struct", func(t *testing.T) {
+		m := NewModel(user{})
+		if m.tableName != "users" {
+			t.Errorf("tableName = %q, want %q", m.tableName, "users")
+		}
+		if len(m.modelFields) != 4 {
+			t.Errorf("len(modelFields) = %d, want %d", len(m.modelFields), 4)
+		}
+	})
+
+	t.Run("handles json tags", func(t *testing.T) {
+		m := NewModel(product{})
+		if m.tableName != "products" {
+			t.Errorf("tableName = %q, want %q", m.tableName, "products")
+		}
+		if len(m.modelFields) != 3 {
+			t.Errorf("len(modelFields) = %d, want %d", len(m.modelFields), 3)
+		}
+	})
+
+	t.Run("handles jsonb fields", func(t *testing.T) {
+		m := NewModel(category{})
+		if len(m.jsonbColumns) != 1 {
+			t.Errorf("len(jsonbColumns) = %d, want %d", len(m.jsonbColumns), 1)
+		}
+		if m.jsonbColumns[0] != "meta" {
+			t.Errorf("jsonbColumns[0] = %q, want %q", m.jsonbColumns[0], "meta")
+		}
+	})
+}
+
+func TestNewModelTable(t *testing.T) {
+	t.Parallel()
+
+	m := NewModelTable("custom_table")
+	if m.tableName != "custom_table" {
+		t.Errorf("tableName = %q, want %q", m.tableName, "custom_table")
+	}
+	if len(m.modelFields) != 0 {
+		t.Errorf("len(modelFields) = %d, want %d", len(m.modelFields), 0)
+	}
+}
+
+func TestModelColumns(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		model  *Model
+		want   string
+	}{
+		{
+			name:  "basic struct",
+			model: NewModel(admin{}),
+			want:  "id,name,password",
+		},
+		{
+			name:  "struct with jsonb",
+			model: NewModel(category{}),
+			want:  "id,created_at,updated_at,meta",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := strings.Join(tt.model.Columns(), ",")
+			if got != tt.want {
+				t.Errorf("Columns() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestModelFields(t *testing.T) {
+	t.Parallel()
+
+	m := NewModel(category{})
+	fields := m.Fields()
+	want := []string{"id", "created_at", "updated_at"}
+
+	if len(fields) != len(want) {
+		t.Fatalf("len(Fields()) = %d, want %d", len(fields), len(want))
+	}
+	for i, f := range fields {
+		if f != want[i] {
+			t.Errorf("Fields()[%d] = %q, want %q", i, f, want[i])
+		}
+	}
+}
+
+func TestModelJSONBFields(t *testing.T) {
+	t.Parallel()
+
+	m := NewModel(category{})
+	fields := m.JSONBFields()
+	want := []string{"meta"}
+
+	if len(fields) != len(want) {
+		t.Fatalf("len(JSONBFields()) = %d, want %d", len(fields), len(want))
+	}
+	for i, f := range fields {
+		if f != want[i] {
+			t.Errorf("JSONBFields()[%d] = %q, want %q", i, f, want[i])
+		}
+	}
+}
+
+func TestModelFieldByName(t *testing.T) {
+	t.Parallel()
+
+	m := NewModel(admin{})
+
+	t.Run("finds existing field", func(t *testing.T) {
+		f := m.FieldByName("Name")
+		if f == nil {
+			t.Fatal("FieldByName(\"Name\") returned nil")
+		}
+		if f.ColumnName != "name" {
+			t.Errorf("ColumnName = %q, want %q", f.ColumnName, "name")
+		}
+	})
+
+	t.Run("returns nil for non-existent field", func(t *testing.T) {
+		f := m.FieldByName("NonExistent")
+		if f != nil {
+			t.Errorf("FieldByName(\"NonExistent\") = %v, want nil", f)
+		}
+	})
+
+	t.Run("returns nil for column name (not field name)", func(t *testing.T) {
+		f := m.FieldByName("name")
+		if f != nil {
+			t.Errorf("FieldByName(\"name\") = %v, want nil", f)
+		}
+	})
+}
+
+func TestModelWithoutFields(t *testing.T) {
+	t.Parallel()
+
+	m := NewModel(admin{})
+
+	tests := []struct {
+		name       string
+		exclude    []string
+		wantCount  int
+	}{
+		{
+			name:      "exclude one field",
+			exclude:   []string{"Name"},
+			wantCount: 2,
+		},
+		{
+			name:      "exclude multiple fields",
+			exclude:   []string{"Name", "Password"},
+			wantCount: 1,
+		},
+		{
+			name:      "exclude all fields",
+			exclude:   []string{"Id", "Name", "Password"},
+			wantCount: 0,
+		},
+		{
+			name:      "exclude non-existent field",
+			exclude:   []string{"NonExistent"},
+			wantCount: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filtered := m.WithoutFields(tt.exclude...)
+			if len(filtered.modelFields) != tt.wantCount {
+				t.Errorf("len(modelFields) = %d, want %d", len(filtered.modelFields), tt.wantCount)
+			}
+			// Verify original model is unchanged
+			if len(m.modelFields) != 3 {
+				t.Errorf("original model modified: len(modelFields) = %d, want 3", len(m.modelFields))
+			}
+		})
+	}
+}
+
+func TestModelTypeName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		model *Model
+		want  string
+	}{
+		{
+			name:  "struct model",
+			model: NewModel(admin{}),
+			want:  "admin",
+		},
+		{
+			name:  "table model",
+			model: NewModelTable("custom"),
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.model.TypeName()
+			if got != tt.want {
+				t.Errorf("TypeName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestModelTableName(t *testing.T) {
+	t.Parallel()
+
+	m := NewModel(admin{})
+	if got := m.TableName(); got != "admins" {
+		t.Errorf("TableName() = %q, want %q", got, "admins")
+	}
+}
+
+func TestModelAddTableName(t *testing.T) {
+	t.Parallel()
+
+	m := NewModel(admin{})
+	fields := []string{"id", "name"}
+	got := m.AddTableName(fields...)
+	want := []string{"admins.id", "admins.name"}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("AddTableName() = %v, want %v", got, want)
+	}
+}
+
+func TestColumnNamer(t *testing.T) {
+	t.Parallel()
+
+	m := NewModel(admin{})
+
+	t.Run("with default namer", func(t *testing.T) {
+		got := strings.Join(m.Columns(), ",")
+		if got != "id,name,password" {
+			t.Errorf("Columns() = %q, want %q", got, "id,name,password")
+		}
+		if got := m.ToColumnName("FooBar"); got != "foo_bar" {
+			t.Errorf("ToColumnName(\"FooBar\") = %q, want %q", got, "foo_bar")
+		}
+	})
+
+	t.Run("with nil namer", func(t *testing.T) {
+		m2 := m.Clone()
+		m2.SetColumnNamer(nil)
+		got := strings.Join(m2.Columns(), ",")
+		if got != "Id,Name,Password" {
+			t.Errorf("Columns() = %q, want %q", got, "Id,Name,Password")
+		}
+		if got := m2.ToColumnName("FooBar"); got != "FooBar" {
+			t.Errorf("ToColumnName(\"FooBar\") = %q, want %q", got, "FooBar")
+		}
+	})
+}
+
+func TestModelClone(t *testing.T) {
+	t.Parallel()
+
+	m := NewModel(admin{})
+	clone := m.Clone()
+
+	// Verify clone has same data
+	if clone.tableName != m.tableName {
+		t.Errorf("clone.tableName = %q, want %q", clone.tableName, m.tableName)
+	}
+	if len(clone.modelFields) != len(m.modelFields) {
+		t.Errorf("clone.modelFields length = %d, want %d", len(clone.modelFields), len(m.modelFields))
+	}
+
+	// Verify clone is independent
+	clone.tableName = "modified"
+	if m.tableName == "modified" {
+		t.Error("modifying clone affected original")
+	}
+}
+
+func TestModelNew(t *testing.T) {
+	t.Parallel()
+
+	m := NewModel(admin{})
+	v := m.New()
+
+	if v.Kind() != reflect.Ptr {
+		t.Errorf("New() kind = %v, want Ptr", v.Kind())
+	}
+	if v.Elem().Type() != m.structType {
+		t.Errorf("New() type = %v, want %v", v.Elem().Type(), m.structType)
+	}
+}
+
+func TestModelNewSlice(t *testing.T) {
+	t.Parallel()
+
+	m := NewModel(admin{})
+	v := m.NewSlice()
+
+	if v.Kind() != reflect.Ptr {
+		t.Errorf("NewSlice() kind = %v, want Ptr", v.Kind())
+	}
+	if v.Elem().Kind() != reflect.Slice {
+		t.Errorf("NewSlice() elem kind = %v, want Slice", v.Elem().Kind())
+	}
+}
+
+func TestModelString(t *testing.T) {
+	t.Parallel()
+
+	m := NewModel(admin{})
+	got := m.String()
+	want := `model (table: "admins") has 3 modelFields`
+	if got != want {
+		t.Errorf("String() = %q, want %q", got, want)
+	}
+}
+
+func TestModelColumnDataTypes(t *testing.T) {
+	t.Parallel()
+
+	m := NewModel(dataTypeTestStruct{})
+	dataTypes := m.ColumnDataTypes()
+
+	tests := []struct {
+		column string
+		want   string
+	}{
+		{"test0", "text DEFAULT ''::text NOT NULL"},
+		{"test1", "foo"},
+		{"test2", "test"},
+		{"test3", "world"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.column, func(t *testing.T) {
+			got := dataTypes[tt.column]
+			if got != tt.want {
+				t.Errorf("ColumnDataTypes()[%q] = %q, want %q", tt.column, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestModelSchema(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		model *Model
+		want  string
+	}{
+		{
+			name:  "basic schema",
+			model: NewModel(schemaTestStruct0{}),
+			want: `CREATE TABLE schema_test_struct0s (
 	test0 text DEFAULT ''::text NOT NULL
 );
-`)
-	t.String(NewModel(schema1Test{}).Schema(), `CREATE VIEW schema1Tests AS SELECT 'yes' AS test0;
-`)
-	t.String(NewModel(schema2Test{}).Schema(), `-- comment b
+`,
+		},
+		{
+			name:  "custom schema method",
+			model: NewModel(schemaTestStruct1{}),
+			want: `CREATE VIEW schemaTestStruct1s AS SELECT 'yes' AS test0;
+`,
+		},
+		{
+			name:  "with before and after hooks",
+			model: NewModel(schemaTestStruct2{}),
+			want: `-- comment b
 
-CREATE TABLE schema2Tests (
+CREATE TABLE schema_test_struct2s (
 	test0 text DEFAULT ''::text NOT NULL
 );
 
 -- comment a
-`)
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.model.Schema()
+			if got != tt.want {
+				t.Errorf("Schema() = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }
 
-func (t *test) String(got, expected string) {
-	t.Helper()
-	if got == expected {
-		t.Logf("case %d passed", t.i)
-	} else {
-		t.Errorf("case %d failed, got %s", t.i, got)
-	}
-	t.i++
-}
+func TestModelDropSchema(t *testing.T) {
+	t.Parallel()
 
-func (t *test) Strings(inputs ...string) {
-	t.Helper()
-	if len(inputs) < 2 {
-		t.Error("inputs should have at least 2 strings")
+	m := NewModel(admin{})
+	got := m.DropSchema()
+	want := "DROP TABLE IF EXISTS admins;\n"
+	if got != want {
+		t.Errorf("DropSchema() = %q, want %q", got, want)
 	}
-	expected := inputs[len(inputs)-1]
-	allEqual := true
-	var badActual string
-	for _, s := range inputs[:len(inputs)-1] {
-		if s != expected {
-			allEqual = false
-			badActual = s
-			break
-		}
-	}
-	if allEqual {
-		t.Logf("case %d passed", t.i)
-	} else {
-		t.Errorf("case %d failed, got %s", t.i, badActual)
-	}
-	t.i++
-}
-
-func (t *test) Int(got, expected int) {
-	t.Helper()
-	if got == expected {
-		t.Logf("case %d passed", t.i)
-	} else {
-		t.Errorf("case %d failed, got %d", t.i, got)
-	}
-	t.i++
-}
-
-func (t *test) Nil(got, expected interface{}) {
-	t.Helper()
-	if got == expected {
-		t.Logf("case %d passed", t.i)
-	} else {
-		t.Errorf("case %d failed, not nil: %+v", t.i, got)
-	}
-	t.i++
 }
