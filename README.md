@@ -73,8 +73,9 @@ fmt.Println(name) // gopsql
 
 <img width="400" src="./tests/benchmark.svg">
 
-Select 100 rows from database using different drivers, compared to their native
-usages. You can run `cd tests && GENERATE=1 go test -v ./benchmark_test.go` to
+Benchmark results for Insert, Update, and Select operations (100 rows each)
+using different drivers, compared to their native usages. Benchmarked on Apple
+M1 Pro MacBook Pro. You can run `cd tests && GENERATE=1 go test -v ./benchmark_test.go` to
 make this benchmark chart. For more information, see
 [Benchmark](tests/benchmark_test.go).
 

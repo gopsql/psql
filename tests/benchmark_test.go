@@ -24,8 +24,13 @@ import (
 
 const (
 	numberRows  = 100
-	selectQuery = "SELECT data FROM bench LIMIT 100"
+	selectQuery = "SELECT data FROM benchs LIMIT 100"
 )
+
+type bench struct {
+	Id   int
+	Data string
+}
 
 var dbConn string
 
@@ -37,21 +42,15 @@ func init() {
 
 	conn := pq.MustOpen(dbConn)
 	defer conn.Close()
-	fmt.Println("Recreating bench table")
-	_, err := conn.Exec(`DROP TABLE IF EXISTS bench`)
+	fmt.Println("Recreating table")
+	model := psql.NewModel(bench{})
+	_, err := conn.Exec(model.DropSchema())
 	if err != nil {
 		panic(err)
 	}
-	_, err = conn.Exec(`CREATE TABLE IF NOT EXISTS bench (id SERIAL PRIMARY KEY, data text)`)
+	_, err = conn.Exec(model.Schema())
 	if err != nil {
 		panic(err)
-	}
-	fmt.Println("Inserting", numberRows, "records")
-	for i := 0; i < numberRows; i++ {
-		_, err = conn.Exec("INSERT INTO bench (data) VALUES ($1)", randomString())
-		if err != nil {
-			panic(err)
-		}
 	}
 	fmt.Println("Init done")
 }
@@ -64,9 +63,189 @@ func randomString() string {
 	return hex.EncodeToString(randomBytes)
 }
 
-func benchmark(b *testing.B, conn db.DB) {
+// INSERT benchmarks
+
+func benchmarkInsert(b *testing.B, conn db.DB) {
 	b.ReportAllocs()
-	m := psql.NewModelTable("bench", conn)
+	m := psql.NewModel(bench{}, conn)
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < numberRows; j++ {
+			m.Insert("Data", randomString()).MustExecute()
+		}
+	}
+}
+
+func BenchmarkInsertPQ(b *testing.B) {
+	conn := pq.MustOpen(dbConn)
+	defer conn.Close()
+	benchmarkInsert(b, conn)
+}
+
+func BenchmarkInsertPGX(b *testing.B) {
+	conn := pgx.MustOpen(dbConn)
+	defer conn.Close()
+	benchmarkInsert(b, conn)
+}
+
+func BenchmarkInsertGOPG(b *testing.B) {
+	conn := gopg.MustOpen(dbConn)
+	defer conn.Close()
+	benchmarkInsert(b, conn)
+}
+
+func BenchmarkInsertPQNative(b *testing.B) {
+	c, err := sql.Open("postgres", dbConn)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	if err := c.Ping(); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < numberRows; j++ {
+			_, err := c.Exec("INSERT INTO benchs (data) VALUES ($1)", randomString())
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+}
+
+func BenchmarkInsertPGXNative(b *testing.B) {
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dbConn)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer pool.Close()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < numberRows; j++ {
+			_, err := pool.Exec(ctx, "INSERT INTO benchs (data) VALUES ($1)", randomString())
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+}
+
+func BenchmarkInsertGOPGNative(b *testing.B) {
+	opt, err := pg.ParseURL(dbConn)
+	if err != nil {
+		b.Fatal(err)
+	}
+	conn := pg.Connect(opt)
+	if err := conn.Ping(context.Background()); err != nil {
+		b.Fatal(err)
+	}
+	defer conn.Close()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < numberRows; j++ {
+			_, err := conn.Exec("INSERT INTO benchs (data) VALUES (?)", randomString())
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+}
+
+// UPDATE benchmarks
+
+func benchmarkUpdate(b *testing.B, conn db.DB) {
+	b.ReportAllocs()
+	m := psql.NewModel(bench{}, conn)
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < numberRows; j++ {
+			m.Update("Data", randomString()).Where("id = $1", j+1).MustExecute()
+		}
+	}
+}
+
+func BenchmarkUpdatePQ(b *testing.B) {
+	conn := pq.MustOpen(dbConn)
+	defer conn.Close()
+	benchmarkUpdate(b, conn)
+}
+
+func BenchmarkUpdatePGX(b *testing.B) {
+	conn := pgx.MustOpen(dbConn)
+	defer conn.Close()
+	benchmarkUpdate(b, conn)
+}
+
+func BenchmarkUpdateGOPG(b *testing.B) {
+	conn := gopg.MustOpen(dbConn)
+	defer conn.Close()
+	benchmarkUpdate(b, conn)
+}
+
+func BenchmarkUpdatePQNative(b *testing.B) {
+	c, err := sql.Open("postgres", dbConn)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	if err := c.Ping(); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < numberRows; j++ {
+			_, err := c.Exec("UPDATE benchs SET data = $1 WHERE id = $2", randomString(), j+1)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+}
+
+func BenchmarkUpdatePGXNative(b *testing.B) {
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dbConn)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer pool.Close()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < numberRows; j++ {
+			_, err := pool.Exec(ctx, "UPDATE benchs SET data = $1 WHERE id = $2", randomString(), j+1)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+}
+
+func BenchmarkUpdateGOPGNative(b *testing.B) {
+	opt, err := pg.ParseURL(dbConn)
+	if err != nil {
+		b.Fatal(err)
+	}
+	conn := pg.Connect(opt)
+	if err := conn.Ping(context.Background()); err != nil {
+		b.Fatal(err)
+	}
+	defer conn.Close()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < numberRows; j++ {
+			_, err := conn.Exec("UPDATE benchs SET data = ? WHERE id = ?", randomString(), j+1)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+}
+
+// SELECT benchmarks
+
+func benchmarkSelect(b *testing.B, conn db.DB) {
+	b.ReportAllocs()
+	m := psql.NewModel(bench{}, conn)
 	for i := 0; i < b.N; i++ {
 		var randomStrings []string
 		if err := m.Select("data").Limit(100).Query(&randomStrings); err != nil {
@@ -75,25 +254,25 @@ func benchmark(b *testing.B, conn db.DB) {
 	}
 }
 
-func BenchmarkPQ(b *testing.B) {
+func BenchmarkSelectPQ(b *testing.B) {
 	conn := pq.MustOpen(dbConn)
 	defer conn.Close()
-	benchmark(b, conn)
+	benchmarkSelect(b, conn)
 }
 
-func BenchmarkPGX(b *testing.B) {
+func BenchmarkSelectPGX(b *testing.B) {
 	conn := pgx.MustOpen(dbConn)
 	defer conn.Close()
-	benchmark(b, conn)
+	benchmarkSelect(b, conn)
 }
 
-func BenchmarkGOPG(b *testing.B) {
+func BenchmarkSelectGOPG(b *testing.B) {
 	conn := gopg.MustOpen(dbConn)
 	defer conn.Close()
-	benchmark(b, conn)
+	benchmarkSelect(b, conn)
 }
 
-func BenchmarkPQNative(b *testing.B) {
+func BenchmarkSelectPQNative(b *testing.B) {
 	c, err := sql.Open("postgres", dbConn)
 	if err != nil {
 		b.Fatal(err)
@@ -121,7 +300,7 @@ func BenchmarkPQNative(b *testing.B) {
 	}
 }
 
-func BenchmarkPGXNative(b *testing.B) {
+func BenchmarkSelectPGXNative(b *testing.B) {
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dbConn)
 	if err != nil {
@@ -147,7 +326,7 @@ func BenchmarkPGXNative(b *testing.B) {
 	}
 }
 
-func BenchmarkGOPGNative(b *testing.B) {
+func BenchmarkSelectGOPGNative(b *testing.B) {
 	opt, err := pg.ParseURL(dbConn)
 	if err != nil {
 		b.Fatal(err)
@@ -173,10 +352,20 @@ type (
 		NsPerOp2 int64
 	}
 
+	Section struct {
+		Title          string
+		Unit           string
+		OffsetX        float64
+		TX, TY, SX, SY float64
+		Bars           []Bar
+	}
+
 	Chart struct {
-		N                                    int
-		W, H, TX, TY, SX, SY, AX, AY, BX, BY float64
-		Bars                                 []Bar
+		N              int
+		W, H           float64
+		AX, AY, BX, BY float64
+		CX, CY, DX, DY float64
+		Sections       []Section
 	}
 
 	Bar struct {
@@ -221,113 +410,175 @@ const tpl = `<svg x="0" y="0" width="{{.W}}" height="{{.H}}" viewBox="0, 0, {{.W
     </linearGradient>
   </defs>
   <g>
-    <text font-family="sans-serif" font-size="12" x="{{.TX}}" y="{{.TY}}" fill="#fff">Select {{.N}} rows</text>
-    <text font-family="sans-serif" font-size="10" x="{{.SX}}" y="{{.SY}}" fill="#fff">ns/op, less is better</text>
+    <rect x="{{.AX}}" y="{{.AY}}" width="10" height="10" fill="url(#g1)"></rect>
+    <text font-family="sans-serif" font-size="10" x="{{.BX}}" y="{{.BY}}" fill="#fff">psql</text>
   </g>
   <g>
-    <rect x="{{.AX}}" y="{{.AY}}" width="10" height="10" fill="url(#g2)"></rect>
-    <text font-family="sans-serif" font-size="10" x="{{.BX}}" y="{{.BY}}" fill="#fff">native</text>
+    <rect x="{{.CX}}" y="{{.CY}}" width="10" height="10" fill="url(#g2)"></rect>
+    <text font-family="sans-serif" font-size="10" x="{{.DX}}" y="{{.DY}}" fill="#fff">native</text>
   </g>
-  {{- range .Bars}}
-  <g>
-    <rect x="{{.X1}}" y="{{.Y1}}" width="{{.W1}}" height="{{.H1}}" fill="url(#g1)"></rect>
-    <rect x="{{.X2}}" y="{{.Y2}}" width="{{.W2}}" height="{{.H2}}" fill="url(#g2)"></rect>
-    <text font-family="sans-serif" font-size="12" text-anchor="middle" x="{{.TX}}" y="{{.TY}}" fill="#fff">{{.T}}</text>
-    <text font-family="sans-serif" font-size="8" text-anchor="middle" x="{{.N1X}}" y="{{.N1Y}}" fill="#fff">{{.N1}}</text>
-    <text font-family="sans-serif" font-size="8" text-anchor="middle" x="{{.N2X}}" y="{{.N2Y}}" fill="#fff">{{.N2}}</text>
+  {{- range .Sections}}
+  <g transform="translate({{.OffsetX}}, 0)">
+    <text font-family="sans-serif" font-size="12" x="{{.TX}}" y="{{.TY}}" fill="#fff">{{.Title}}</text>
+    <text font-family="sans-serif" font-size="10" x="{{.SX}}" y="{{.SY}}" fill="#fff">{{.Unit}}, less is better</text>
+    {{- range .Bars}}
+    <g>
+      <rect x="{{.X1}}" y="{{.Y1}}" width="{{.W1}}" height="{{.H1}}" fill="url(#g1)"></rect>
+      <rect x="{{.X2}}" y="{{.Y2}}" width="{{.W2}}" height="{{.H2}}" fill="url(#g2)"></rect>
+      <text font-family="sans-serif" font-size="12" text-anchor="middle" x="{{.TX}}" y="{{.TY}}" fill="#fff">{{.T}}</text>
+      <text font-family="sans-serif" font-size="7" text-anchor="middle" x="{{.N1X}}" y="{{.N1Y}}" fill="#fff">{{.N1}}</text>
+      <text font-family="sans-serif" font-size="7" text-anchor="middle" x="{{.N2X}}" y="{{.N2Y}}" fill="#fff">{{.N2}}</text>
+    </g>
+    {{- end}}
   </g>
   {{- end}}
 </svg>
 `
 
+type BenchmarkSet struct {
+	Title   string
+	Unit    string  // "ns/op" or "μs/op"
+	Divisor float64 // 1 for ns, 1000 for μs
+	Columns []Column
+}
+
 func generateChart() Chart {
-	columns := []Column{
+	benchmarkSets := []BenchmarkSet{
 		{
-			Name:   "pq",
-			Bench1: BenchmarkPQ,
-			Bench2: BenchmarkPQNative,
+			Title:   fmt.Sprintf("Insert %d rows", numberRows),
+			Unit:    "μs/op",
+			Divisor: 1000,
+			Columns: []Column{
+				{Name: "pq", Bench1: BenchmarkInsertPQ, Bench2: BenchmarkInsertPQNative},
+				{Name: "pgx", Bench1: BenchmarkInsertPGX, Bench2: BenchmarkInsertPGXNative},
+				{Name: "gopg", Bench1: BenchmarkInsertGOPG, Bench2: BenchmarkInsertGOPGNative},
+			},
 		},
 		{
-			Name:   "pgx",
-			Bench1: BenchmarkPGX,
-			Bench2: BenchmarkPGXNative,
+			Title:   fmt.Sprintf("Update %d rows", numberRows),
+			Unit:    "μs/op",
+			Divisor: 1000,
+			Columns: []Column{
+				{Name: "pq", Bench1: BenchmarkUpdatePQ, Bench2: BenchmarkUpdatePQNative},
+				{Name: "pgx", Bench1: BenchmarkUpdatePGX, Bench2: BenchmarkUpdatePGXNative},
+				{Name: "gopg", Bench1: BenchmarkUpdateGOPG, Bench2: BenchmarkUpdateGOPGNative},
+			},
 		},
 		{
-			Name:   "gopg",
-			Bench1: BenchmarkGOPG,
-			Bench2: BenchmarkGOPGNative,
+			Title:   fmt.Sprintf("Select %d rows", numberRows),
+			Unit:    "ns/op",
+			Divisor: 1,
+			Columns: []Column{
+				{Name: "pq", Bench1: BenchmarkSelectPQ, Bench2: BenchmarkSelectPQNative},
+				{Name: "pgx", Bench1: BenchmarkSelectPGX, Bench2: BenchmarkSelectPGXNative},
+				{Name: "gopg", Bench1: BenchmarkSelectGOPG, Bench2: BenchmarkSelectGOPGNative},
+			},
 		},
 	}
 
-	var maxNsPerOp int64
-	for i := range columns {
-		fmt.Println("benchmarking", columns[i].Name)
+	// Run all benchmarks and find max for each section
+	for setIdx := range benchmarkSets {
+		for colIdx := range benchmarkSets[setIdx].Columns {
+			col := &benchmarkSets[setIdx].Columns[colIdx]
+			fmt.Printf("benchmarking %s - %s\n", benchmarkSets[setIdx].Title, col.Name)
 
-		result := testing.Benchmark(columns[i].Bench1)
-		columns[i].NsPerOp1 = result.NsPerOp()
+			result := testing.Benchmark(col.Bench1)
+			col.NsPerOp1 = result.NsPerOp()
 
-		result = testing.Benchmark(columns[i].Bench2)
-		columns[i].NsPerOp2 = result.NsPerOp()
-
-		if columns[i].NsPerOp1 > maxNsPerOp {
-			maxNsPerOp = columns[i].NsPerOp1
-		}
-		if columns[i].NsPerOp2 > maxNsPerOp {
-			maxNsPerOp = columns[i].NsPerOp2
+			result = testing.Benchmark(col.Bench2)
+			col.NsPerOp2 = result.NsPerOp()
 		}
 	}
 
-	padLeft, padRight := 25.0, 25.0
+	// Narrower dimensions for each section
+	padLeft, padRight := 15.0, 15.0
 	padTop, padBottom := 55.0, 20.0
-	bars := []Bar{}
-	x1 := padLeft
-	barWidth := 30.0
-	barGap := 5.0
-	columnGap := 30.0
+	barWidth := 20.0
+	barGap := 3.0
+	columnGap := 15.0
 	barMaxHeight := 100.0
 	barMaxY := barMaxHeight + padTop
 	textY := barMaxY + 15.0
-	for _, column := range columns {
-		x2 := x1 + barWidth + barGap
-		h1 := float64(column.NsPerOp1*1000/maxNsPerOp) / 10
-		h2 := float64(column.NsPerOp2*1000/maxNsPerOp) / 10
-		bars = append(bars, Bar{
-			X1:  x1,
-			W1:  barWidth,
-			Y1:  barMaxY - h1,
-			H1:  h1,
-			N1:  strconv.Itoa(int(column.NsPerOp1)),
-			N1X: x1 + barWidth/2,
-			N1Y: barMaxY - h1 - 6,
+	sectionGap := 10.0
 
-			X2:  x2,
-			W2:  barWidth,
-			Y2:  barMaxY - h2,
-			H2:  h2,
-			N2:  strconv.Itoa(int(column.NsPerOp2)),
-			N2X: x2 + barWidth/2,
-			N2Y: barMaxY - h2 - 6,
+	var sections []Section
+	offsetX := 0.0
 
-			TX: x2 - barGap/2,
-			TY: textY,
-			T:  column.Name,
+	for _, set := range benchmarkSets {
+		// Find max for this section
+		var sectionMaxNsPerOp int64
+		for _, column := range set.Columns {
+			if column.NsPerOp1 > sectionMaxNsPerOp {
+				sectionMaxNsPerOp = column.NsPerOp1
+			}
+			if column.NsPerOp2 > sectionMaxNsPerOp {
+				sectionMaxNsPerOp = column.NsPerOp2
+			}
+		}
+
+		bars := []Bar{}
+		x1 := padLeft
+
+		for _, column := range set.Columns {
+			x2 := x1 + barWidth + barGap
+			h1 := float64(column.NsPerOp1*1000/sectionMaxNsPerOp) / 10
+			h2 := float64(column.NsPerOp2*1000/sectionMaxNsPerOp) / 10
+			// Display value with divisor applied
+			displayVal1 := float64(column.NsPerOp1) / set.Divisor
+			displayVal2 := float64(column.NsPerOp2) / set.Divisor
+			bars = append(bars, Bar{
+				X1:  x1,
+				W1:  barWidth,
+				Y1:  barMaxY - h1,
+				H1:  h1,
+				N1:  strconv.Itoa(int(displayVal1)),
+				N1X: x1 + barWidth/2,
+				N1Y: barMaxY - h1 - 6,
+
+				X2:  x2,
+				W2:  barWidth,
+				Y2:  barMaxY - h2,
+				H2:  h2,
+				N2:  strconv.Itoa(int(displayVal2)),
+				N2X: x2 + barWidth/2,
+				N2Y: barMaxY - h2 - 6,
+
+				TX: x2 - barGap/2,
+				TY: textY,
+				T:  column.Name,
+			})
+			x1 = x2 + barWidth + columnGap
+		}
+
+		sectionWidth := x1 - columnGap + padRight
+		sections = append(sections, Section{
+			Title:   set.Title,
+			Unit:    set.Unit,
+			OffsetX: offsetX,
+			TX:      padLeft,
+			TY:      20.0,
+			SX:      padLeft,
+			SY:      32.0,
+			Bars:    bars,
 		})
-		x1 = x2 + barWidth + columnGap
+		offsetX += sectionWidth + sectionGap
 	}
-	chartWidth := x1 - columnGap + padRight
+
+	chartWidth := offsetX - sectionGap
 	chartHeight := textY + padBottom
+
 	return Chart{
-		N:    numberRows,
-		W:    chartWidth,
-		H:    chartHeight,
-		TX:   padLeft,
-		TY:   20.0,
-		SX:   padLeft,
-		SY:   32.0,
-		AX:   chartWidth - 55.0,
-		AY:   10.0,
-		BX:   chartWidth - 40.0,
-		BY:   18.0,
-		Bars: bars,
+		N:        numberRows,
+		W:        chartWidth,
+		H:        chartHeight,
+		AX:       chartWidth - 55.0,
+		AY:       10.0,
+		BX:       chartWidth - 40.0,
+		BY:       18.0,
+		CX:       chartWidth - 55.0,
+		CY:       25.0,
+		DX:       chartWidth - 40.0,
+		DY:       33.0,
+		Sections: sections,
 	}
 }
