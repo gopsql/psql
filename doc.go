@@ -107,6 +107,45 @@
 //	var byDept map[int][]User
 //	users.Select("department_id", "id", "name").MustQuery(&byDept)
 //
+// # Method Comparison
+//
+// Some methods have similar names but different purposes:
+//
+// QueryRow vs Query:
+//
+//   - QueryRow(dest ...interface{}) scans a single row into individual pointers,
+//     one for each column. Use when you need specific column values.
+//   - Query(target interface{}) scans results into a struct, slice, or map.
+//     Columns are auto-mapped to struct fields by name.
+//
+// Example:
+//
+//	// QueryRow - individual pointers for each column
+//	var name string
+//	var id int
+//	users.Select("name", "id").Where("id = $1", 1).MustQueryRow(&name, &id)
+//
+//	// Query - single pointer to struct (auto-maps columns to fields)
+//	var user User
+//	users.Find().Where("id = $1", 1).MustQuery(&user)
+//
+// Where vs WHERE:
+//
+//   - Where(condition string, args ...) takes a raw SQL condition with $1, $2
+//     or $? placeholders. Full SQL expression flexibility.
+//   - WHERE(args ...) takes field/operator/value tuples (3 args per condition).
+//     Field names are auto-converted to column names.
+//
+// Example:
+//
+//	// Where - raw SQL condition string
+//	users.Find().Where("id = $1", id)
+//	users.Find().Where("name ILIKE $1 OR email ILIKE $1", "%john%")
+//
+//	// WHERE - structured tuples: (field, operator, value)
+//	users.Find().WHERE("Id", "=", id)
+//	users.Find().WHERE("Status", "=", "active", "Age", ">=", 18)
+//
 // # Schema Generation
 //
 // Generate CREATE TABLE statements from struct definitions:

@@ -177,15 +177,60 @@ users.Update("Views", psql.String("Views + 1")).Where("id = $1", 1).MustExecute(
 users.Update("Views", psql.StringWithArg("Views + $?", 10)).Where("id = $1", 1).MustExecute()
 ```
 
+### Common Confusions
+
+#### QueryRow vs Query
+
+| Method | Purpose | Arguments | Use Case |
+|--------|---------|-----------|----------|
+| `QueryRow` | Scan single row into individual variables | Multiple pointers (one per column) | Simple values: `&name, &id` |
+| `Query` | Scan results into struct, slice, or map | Single pointer to composite type | Full struct: `&user` or `&users` |
+
+```go
+// QueryRow - pass individual pointers for each column
+var name string
+var id int
+users.Select("name", "id").Where("id = $1", 1).MustQueryRow(&name, &id)
+
+// Query - pass a single pointer to struct (columns auto-map to fields)
+var user User
+users.Find().Where("id = $1", 1).MustQuery(&user)
+
+// Query - also works with slices and maps
+var userList []User
+users.Find().MustQuery(&userList)
+```
+
+#### Where vs WHERE
+
+| Method | Purpose | Column Names | Flexibility |
+|--------|---------|--------------|-------------|
+| `Where` | Raw SQL condition with placeholders | Use exact column names | Full SQL expression support |
+| `WHERE` | Structured field/operator/value tuples | Auto-converts field names | Simple comparisons only |
+
+```go
+// Where - raw SQL condition, use $1/$2 or $? placeholders
+users.Find().Where("id = $1", id)
+users.Find().Where("name ILIKE $? OR email ILIKE $?", "%john%", "%john%")
+
+// WHERE - structured tuples: (field, operator, value) repeated
+users.Find().WHERE("Id", "=", id)
+users.Find().WHERE("Status", "=", "active", "Age", ">=", 18)
+```
+
 ## Benchmarks
 
-<img width="400" src="./tests/benchmark.svg">
+<img src="./tests/benchmark.svg">
 
-Benchmark results for Insert, Update, and Select operations (100 rows each) compared to native driver usage. Run benchmarks with:
+Benchmark results for Insert, Update, and Select operations (100 rows each) compared to native driver usage.
+Benchmarked on Apple M1 Pro MacBook Pro.
+Run benchmarks with:
 
 ```bash
 cd tests && GENERATE=1 go test -v ./benchmark_test.go
 ```
+
+For more information, see [Benchmark](tests/benchmark_test.go).
 
 ## Documentation
 
