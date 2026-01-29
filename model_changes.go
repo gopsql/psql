@@ -6,8 +6,14 @@ import (
 )
 
 type (
+	// RawChanges is a map of string keys to values, used as input to Filter and
+	// Changes methods. Keys should match either JSON tag names (for Changes) or
+	// struct field names (for FieldChanges).
 	RawChanges map[string]interface{}
-	Changes    map[Field]interface{}
+
+	// Changes maps Field definitions to their values. It is the output of Filter
+	// and the input to Insert and Update operations.
+	Changes map[Field]interface{}
 )
 
 func (c Changes) MarshalJSON() ([]byte, error) {
@@ -24,6 +30,8 @@ func (c Changes) String() string {
 }
 
 type (
+	// String is a raw SQL expression that will not be escaped or parameterized.
+	// Use for expressions like "NOW()" or "column + 1".
 	String string
 
 	stringWithArg struct {
@@ -32,6 +40,11 @@ type (
 	}
 )
 
+// StringWithArg creates a raw SQL expression with a parameter placeholder.
+// The $? in the string will be replaced with the proper positional parameter.
+//
+//	users.Update("views", psql.StringWithArg("views + $?", 1))
+//	// UPDATE users SET views = views + $1
 func StringWithArg(str string, arg interface{}) stringWithArg {
 	return stringWithArg{
 		str: str,
@@ -43,13 +56,11 @@ func (s stringWithArg) String() string {
 	return s.str
 }
 
-// Convert RawChanges to Changes. Keys are JSON key names. See FieldChanges().
+// Changes converts RawChanges to Changes using JSON tag names as keys.
+// Use FieldChanges if your keys are struct field names instead.
 //
-//	m := psql.NewModel(struct {
-//		Age *int `json:"age"`
-//	}{})
-//	m.Changes(map[string]interface{}{
-//		"age": 99,
+//	changes := users.Changes(map[string]interface{}{
+//		"name": "Alice",  // matches `json:"name"` tag
 //	})
 func (m Model) Changes(in RawChanges) (out Changes) {
 	out = Changes{}
@@ -62,7 +73,8 @@ func (m Model) Changes(in RawChanges) (out Changes) {
 	return
 }
 
-// Convert RawChanges to Changes. Keys are field names. See Changes().
+// FieldChanges converts RawChanges to Changes using struct field names as keys.
+// Use Changes if your keys are JSON tag names instead.
 func (m Model) FieldChanges(in RawChanges) (out Changes) {
 	out = Changes{}
 	for _, field := range m.modelFields {
@@ -74,14 +86,14 @@ func (m Model) FieldChanges(in RawChanges) (out Changes) {
 	return
 }
 
-// Helper to add CreatedAt of current time changes.
+// CreatedAt returns Changes setting the CreatedAt field to the current UTC time.
 func (m Model) CreatedAt() Changes {
 	return m.Changes(RawChanges{
 		"CreatedAt": time.Now().UTC(),
 	})
 }
 
-// Helper to add UpdatedAt of current time changes.
+// UpdatedAt returns Changes setting the UpdatedAt field to the current UTC time.
 func (m Model) UpdatedAt() Changes {
 	return m.Changes(RawChanges{
 		"UpdatedAt": time.Now().UTC(),

@@ -6,7 +6,8 @@ import (
 )
 
 type (
-	// DeleteSQL can be created with Model.NewSQL().AsDelete()
+	// DeleteSQL represents a DELETE statement builder. Create instances using
+	// Model.Delete or SQL.AsDelete.
 	DeleteSQL struct {
 		*SQL
 		sqlConditions
@@ -15,7 +16,7 @@ type (
 	}
 )
 
-// Convert SQL to DeleteSQL.
+// AsDelete converts a raw SQL statement to a DeleteSQL builder.
 func (s SQL) AsDelete() *DeleteSQL {
 	d := &DeleteSQL{
 		SQL: &s,
@@ -24,19 +25,21 @@ func (s SQL) AsDelete() *DeleteSQL {
 	return d
 }
 
-// Delete builds a DELETE statement. You can add extra clause (like WHERE,
-// RETURNING) to the statement as the first argument. The rest arguments are
-// for any placeholder parameters in the statement.
+// Delete creates a DELETE statement. Use Where to specify which rows to delete.
 //
+//	// Delete with condition
+//	users.Delete().Where("id = $1", 1).MustExecute()
+//
+//	// Delete with RETURNING clause
 //	var ids []int
-//	psql.NewModelTable("reports", conn).Delete().Returning("id").MustQuery(&ids)
+//	users.Delete().Where("status = $1", "inactive").Returning("id").MustQuery(&ids)
 func (m Model) Delete() *DeleteSQL {
 	return m.NewSQL("").AsDelete()
 }
 
-// Adds condition to DELETE FROM statement. Arguments should use positonal
-// parameters like $1, $2. If only one argument is provided, "$?" in the
-// condition will be replaced with the correct positonal parameter.
+// Where adds a WHERE condition to the DELETE statement. Use $1, $2 for
+// positional parameters, or $? which is auto-replaced when a single argument
+// is provided.
 func (s *DeleteSQL) Where(condition string, args ...interface{}) *DeleteSQL {
 	s.args = append(s.args, args...)
 	if len(args) == 1 {
@@ -46,16 +49,8 @@ func (s *DeleteSQL) Where(condition string, args ...interface{}) *DeleteSQL {
 	return s
 }
 
-// WHERE adds conditions to DELETE statement from variadic inputs.
-//
-// The args parameter contains field name, operator, value tuples with each
-// tuple consisting of three consecutive elements: the field name as a string,
-// an operator symbol as a string (e.g. "=", ">", "<="), and the value to match
-// against that field.
-//
-// To generate a WHERE clause matching multiple fields, use more than one
-// set of field/operator/value tuples in the args array. For example,
-// WHERE("A", "=", 1, "B", "!=", 2) means "WHERE (A = 1) AND (B != 2)".
+// WHERE adds conditions from field/operator/value tuples. Each tuple consists
+// of three consecutive arguments: field name, operator, and value.
 func (s *DeleteSQL) WHERE(args ...interface{}) *DeleteSQL {
 	for i := 0; i < len(args)/3; i++ {
 		var column string
@@ -75,19 +70,20 @@ func (s *DeleteSQL) WHERE(args ...interface{}) *DeleteSQL {
 	return s
 }
 
-// Adds RETURNING clause to DELETE FROM statement.
+// Using adds a USING clause for DELETE with joins.
 func (s *DeleteSQL) Using(list ...string) *DeleteSQL {
 	s.usingList = strings.Join(list, ", ")
 	return s
 }
 
-// Adds RETURNING clause to DELETE FROM statement.
+// Returning adds a RETURNING clause to retrieve values from deleted rows.
 func (s *DeleteSQL) Returning(expressions ...string) *DeleteSQL {
 	s.outputExpression = strings.Join(expressions, ", ")
 	return s
 }
 
-// Perform operations on the chain.
+// Tap applies transformation functions to this DeleteSQL, enabling custom
+// method chaining.
 func (s *DeleteSQL) Tap(funcs ...func(*DeleteSQL) *DeleteSQL) *DeleteSQL {
 	for i := range funcs {
 		s = funcs[i](s)

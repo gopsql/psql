@@ -7,7 +7,8 @@ import (
 )
 
 type (
-	// UpdateSQL can be created with Model.NewSQL().AsUpdate()
+	// UpdateSQL represents an UPDATE statement builder. Create instances using
+	// Model.Update or SQL.AsUpdate.
 	UpdateSQL struct {
 		*SQL
 		sqlConditions
@@ -16,7 +17,8 @@ type (
 	}
 )
 
-// Convert SQL to UpdateSQL. The optional changes will be used in Reload().
+// AsUpdate converts a raw SQL statement to an UpdateSQL builder with the given
+// changes.
 func (s SQL) AsUpdate(changes ...interface{}) *UpdateSQL {
 	u := &UpdateSQL{
 		SQL:     &s,
@@ -26,28 +28,28 @@ func (s SQL) AsUpdate(changes ...interface{}) *UpdateSQL {
 	return u
 }
 
-// Update builds an UPDATE statement with fields and values in the changes.
+// Update creates an UPDATE statement with the given field/value changes.
+// Always use Where to specify which rows to update.
 //
-//	var rowsAffected int
-//	m.Update(changes...).Where("user_id = $1", 1).MustExecute(&rowsAffected)
+//	// Using field/value pairs
+//	users.Update("Name", "Bob").Where("id = $1", 1).MustExecute()
 //
-// Changes can be a list of field name and value pairs and can also be obtained
-// from methods like Changes(), FieldChanges(), Assign(), Bind(), Filter().
-//
-//	m.Update("FieldA", 123, "FieldB", "other").MustExecute()
+//	// Using Changes from Filter with rows affected count
+//	var count int
+//	users.Update(changes).Where("id = $1", 1).MustExecute(&count)
 func (m Model) Update(lotsOfChanges ...interface{}) *UpdateSQL {
 	return m.NewSQL("").AsUpdate(lotsOfChanges...)
 }
 
-// Adds RETURNING clause to UPDATE statement.
+// Returning adds a RETURNING clause to retrieve values from updated rows.
 func (s *UpdateSQL) Returning(expressions ...string) *UpdateSQL {
 	s.outputExpression = strings.Join(expressions, ", ")
 	return s
 }
 
-// Adds condition to UPDATE statement. Arguments should use positonal
-// parameters like $1, $2. If only one argument is provided, "$?" in the
-// condition will be replaced with the correct positonal parameter.
+// Where adds a WHERE condition to the UPDATE statement. Use $1, $2 for
+// positional parameters, or $? which is auto-replaced when a single argument
+// is provided.
 func (s *UpdateSQL) Where(condition string, args ...interface{}) *UpdateSQL {
 	s.args = append(s.args, args...)
 	if len(args) == 1 {
@@ -57,16 +59,8 @@ func (s *UpdateSQL) Where(condition string, args ...interface{}) *UpdateSQL {
 	return s
 }
 
-// WHERE adds conditions to UPDATE statement from variadic inputs.
-//
-// The args parameter contains field name, operator, value tuples with each
-// tuple consisting of three consecutive elements: the field name as a string,
-// an operator symbol as a string (e.g. "=", ">", "<="), and the value to match
-// against that field.
-//
-// To generate a WHERE clause matching multiple fields, use more than one
-// set of field/operator/value tuples in the args array. For example,
-// WHERE("A", "=", 1, "B", "!=", 2) means "WHERE (A = 1) AND (B != 2)".
+// WHERE adds conditions from field/operator/value tuples. Each tuple consists
+// of three consecutive arguments: field name, operator, and value.
 func (s *UpdateSQL) WHERE(args ...interface{}) *UpdateSQL {
 	for i := 0; i < len(args)/3; i++ {
 		var column string
@@ -86,7 +80,8 @@ func (s *UpdateSQL) WHERE(args ...interface{}) *UpdateSQL {
 	return s
 }
 
-// Perform operations on the chain.
+// Tap applies transformation functions to this UpdateSQL, enabling custom
+// method chaining.
 func (s *UpdateSQL) Tap(funcs ...func(*UpdateSQL) *UpdateSQL) *UpdateSQL {
 	for i := range funcs {
 		s = funcs[i](s)

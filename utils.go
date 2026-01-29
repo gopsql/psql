@@ -7,14 +7,14 @@ import (
 )
 
 var (
-	// DefaultColumnNamer is default column naming function used when
-	// calling NewModel. Default is null, which uses field name as column
-	// name.
+	// DefaultColumnNamer is the default function for transforming struct field
+	// names to database column names. If nil (the default), field names are
+	// used as-is. Set to ToUnderscore for snake_case column names.
 	DefaultColumnNamer func(string) string = nil
 
-	// DefaultColumnNamer is default table naming function used when
-	// calling NewModel. Default is ToPlural, which converts table name to
-	// its plural form.
+	// DefaultTableNamer is the default function for transforming struct names
+	// to database table names. Defaults to ToPlural, which converts "User" to
+	// "Users". Set to ToPluralUnderscore for snake_case table names.
 	DefaultTableNamer func(string) string = ToPlural
 )
 
@@ -22,11 +22,13 @@ const (
 	tableNameField = "__TABLE_NAME__"
 )
 
-// ToTableName returns table name of a struct. If struct has "TableName()
-// string" receiver method, its return value is used. If name is empty and
-// struct has a __TABLE_NAME__ field, its tag value is used. If it is still
-// empty, struct's name is used. If name is still empty, "error_no_table_name"
-// is returned.
+// ToTableName extracts the database table name from a struct. The name is
+// determined in order of priority:
+//  1. Return value of TableName() method if implemented
+//  2. Tag value of __TABLE_NAME__ field if present
+//  3. Struct name transformed by DefaultTableNamer
+//
+// Returns "error_no_table_name" for anonymous structs without explicit naming.
 func ToTableName(object interface{}) (name string) {
 	if o, ok := object.(interface{ TableName() string }); ok {
 		name = o.TableName()
@@ -56,9 +58,9 @@ func ToTableName(object interface{}) (name string) {
 	return
 }
 
-// Convert a word to its plural form. Add "es" for "s" or "o" ending,
-// "y" ending will be replaced with "ies", for other endings, add "s".
-// For example, "product" will be converted to "products".
+// ToPlural converts a word to its plural form using simple English rules:
+// words ending in "y" become "ies", words ending in "s" or "o" add "es",
+// and other words add "s". For example, "Product" becomes "Products".
 func ToPlural(in string) string {
 	if in == "" {
 		return ""
@@ -72,15 +74,15 @@ func ToPlural(in string) string {
 	return in + "s"
 }
 
-// Convert a "CamelCase" word to its plural "snake_case" (underscore) form.
-// For example, "PostComment" will be converted to "post_comments".
+// ToPluralUnderscore converts a CamelCase word to plural snake_case form.
+// For example, "PostComment" becomes "post_comments".
 func ToPluralUnderscore(in string) string {
 	return ToPlural(ToUnderscore(in))
 }
 
-// Convert "CamelCase" word to its "snake_case" (underscore) form. For example,
-// "FullName" will be converted to "full_name".
-func ToUnderscore(str string) string { // from govalidator
+// ToUnderscore converts a CamelCase string to snake_case. For example,
+// "FullName" becomes "full_name". Numbers are not treated as word separators.
+func ToUnderscore(str string) string {
 	var output []rune
 	var segment []rune
 	for _, r := range str {
@@ -106,10 +108,11 @@ func addSegment(inrune, segment []rune) []rune { // from govalidator
 	return inrune
 }
 
-// FieldDataType generates PostgreSQL data type based on struct's field name
-// and type.  This is default function used when calling ColumnDataTypes() or
-// Schema(). To use custom data type function, define "FieldDataType(fieldName,
-// fieldType string) (dataType string)" function for your connection.
+// FieldDataType generates a PostgreSQL data type definition from a Go field
+// name and type. This is the default implementation used by Schema. Fields
+// named "id" with integer types become SERIAL PRIMARY KEY. Pointer types are
+// nullable; non-pointer types include NOT NULL. To customize type mapping,
+// implement FieldDataType on your database connection type.
 func FieldDataType(fieldName, fieldType string) (dataType string) {
 	if strings.ToLower(fieldName) == "id" && strings.Contains(fieldType, "int") {
 		dataType = "SERIAL PRIMARY KEY"

@@ -7,15 +7,20 @@ import (
 )
 
 type (
+	// ModelWithPermittedFields wraps a Model with a whitelist of permitted
+	// fields for mass assignment protection. Create instances using Permit or
+	// PermitAllExcept, then use Filter to safely extract allowed fields from
+	// user input.
 	ModelWithPermittedFields struct {
 		*Model
 		permittedFieldsIdx []int
 	}
 )
 
-// Permits list of field names of a Model to limit Filter() which fields should
-// be allowed for mass updating. If no field names are provided ("Permit()"),
-// no fields are permitted.
+// Permit creates a ModelWithPermittedFields that only allows the specified
+// fields in Filter operations. This provides mass assignment protection similar
+// to Rails strong parameters. If no field names are provided, no fields are
+// permitted.
 func (m Model) Permit(fieldNames ...string) *ModelWithPermittedFields {
 	idx := []int{}
 	for i, field := range m.modelFields {
@@ -30,9 +35,9 @@ func (m Model) Permit(fieldNames ...string) *ModelWithPermittedFields {
 	return &ModelWithPermittedFields{&m, idx}
 }
 
-// Permits all available fields except provided of a Model to limit Filter()
-// which fields should be allowed for mass updating. If no field names are
-// provided ("PermitAllExcept()"), all available fields are permitted.
+// PermitAllExcept creates a ModelWithPermittedFields that allows all fields
+// except the specified ones in Filter operations. If no field names are
+// provided, all fields are permitted.
 func (m Model) PermitAllExcept(fieldNames ...string) *ModelWithPermittedFields {
 	idx := []int{}
 	for i, field := range m.modelFields {
@@ -50,7 +55,8 @@ func (m Model) PermitAllExcept(fieldNames ...string) *ModelWithPermittedFields {
 	return &ModelWithPermittedFields{&m, idx}
 }
 
-// Returns list of permitted field names.
+// PermittedFields returns the list of field names that are permitted for
+// mass assignment.
 func (m ModelWithPermittedFields) PermittedFields() (out []string) {
 	for _, i := range m.permittedFieldsIdx {
 		field := m.modelFields[i]
@@ -68,18 +74,18 @@ func (m ModelWithPermittedFields) MustBind(ctx interface{ Bind(interface{}) erro
 	return c
 }
 
-// Bind data of permitted fields to target structure using echo.Context#Bind
-// function. The "target" must be a pointer to struct.
+// Bind extracts permitted fields from an HTTP request using a Bind method
+// (compatible with Echo and similar frameworks). Only permitted fields are
+// copied to target; other fields retain their zero values. The target must be
+// a pointer to a struct.
 //
-//	// request with ?name=x&age=10
-//	func list(c echo.Context) error {
-//		obj := struct {
-//			Name string `query:"name"`
-//			Age  int    `query:"age"`
-//		}{}
-//		m := psql.NewModel(obj)
-//		fmt.Println(m.Permit("Name").Bind(c, &obj))
-//		fmt.Println(obj) // "Name" is "x" and "Age" is 0 (default), because only "Name" is permitted to change
+//	func handler(c echo.Context) error {
+//		var user User
+//		changes, err := users.Permit("Name", "Email").Bind(c, &user)
+//		if err != nil {
+//			return err
+//		}
+//		users.Insert(changes).MustExecute()
 //		// ...
 //	}
 func (m ModelWithPermittedFields) Bind(ctx interface{ Bind(interface{}) error }, target interface{}) (Changes, error) {
@@ -103,27 +109,20 @@ func (m ModelWithPermittedFields) Bind(ctx interface{ Bind(interface{}) error },
 	return out, nil
 }
 
-// Filter keeps data of permitted fields set by Permit() from multiple inputs.
-// Inputs can be RawChanges (map[string]interface{}) or JSON-encoded data
-// (string, []byte or io.Reader), their keys must be fields' JSON names. Input
-// can also be a struct. The "Changes" outputs can be arguments for Insert() or
-// Update().
+// Filter extracts only permitted fields from input data, providing mass
+// assignment protection. Accepts multiple input types: RawChanges, JSON strings,
+// []byte, io.Reader, or structs. Map/JSON keys must match the field's JSON tag
+// name. The returned Changes can be passed to Insert or Update.
 //
-//	m := psql.NewModel(struct {
-//		Age *int `json:"age"`
-//	}{})
-//	m.Permit("Age").Filter(
-//		psql.RawChanges{
-//			"age": 10,
-//		},
-//		map[string]interface{}{
-//			"age": 20,
-//		},
-//		`{"age": 30}`,
-//		[]byte(`{"age": 40}`),
-//		strings.NewReader(`{"age": 50}`),
-//		struct{ Age int }{60},
-//	) // Age is 60
+//	// Filter JSON from request body
+//	changes := users.Permit("Name", "Email").Filter(requestBody)
+//	users.Insert(changes).MustExecute()
+//
+//	// Filter from multiple sources (later values override earlier)
+//	changes := users.Permit("Name").Filter(
+//		map[string]interface{}{"name": "Alice"},
+//		`{"name": "Bob"}`,
+//	) // name will be "Bob"
 func (m ModelWithPermittedFields) Filter(inputs ...interface{}) (out Changes) {
 	out = Changes{}
 	for _, input := range inputs {

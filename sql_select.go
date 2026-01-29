@@ -9,7 +9,8 @@ import (
 )
 
 type (
-	// SelectSQL can be created with Model.NewSQL().AsSelect()
+	// SelectSQL represents a SELECT query builder. Create instances using
+	// Model.Find, Model.Select, or SQL.AsSelect.
 	SelectSQL struct {
 		*SQL
 		sqlConditions
@@ -35,7 +36,8 @@ type (
 	}
 )
 
-// Convert SQL to SelectSQL. The optional fields will be used in Select().
+// AsSelect converts a raw SQL statement to a SelectSQL builder. Optional field
+// names are used as the initial SELECT columns.
 func (s SQL) AsSelect(fields ...string) *SelectSQL {
 	f := &SelectSQL{
 		SQL:    &s,
@@ -49,99 +51,88 @@ func (m Model) newSelect(fields ...string) *SelectSQL {
 	return m.NewSQL("").AsSelect(fields...)
 }
 
-// Create a SELECT query statement with all fields of a Model. If you want to
-// use other data type than the type of struct passed in NewModel(), see
-// Select().
+// Find creates a SELECT query for all columns defined in the Model's struct.
+// Results are scanned into the same struct type or a slice of that type.
 //
-//	// put results into a slice
-//	var users []models.User
-//	psql.NewModel(models.User{}, conn).Find().MustQuery(&users)
+//	// Query multiple rows into a slice
+//	var users []User
+//	psql.NewModel(User{}, conn).Find().MustQuery(&users)
 //
-//	// put results into a struct
-//	var user models.User
-//	psql.NewModel(models.User{}, conn).Find().Where("id = $1", 1).MustQuery(&user)
+//	// Query single row into a struct
+//	var user User
+//	psql.NewModel(User{}, conn).Find().Where("id = $1", 1).MustQuery(&user)
 //
-// You can pass options to modify Find(). For example, Find(psql.AddTableName)
-// adds table name to every field.
+// Options can include field transformation functions like AddTableName, which
+// prefixes each column with the table name for use in JOIN queries.
 func (m Model) Find(options ...interface{}) *SelectSQL {
 	return m.newSelect().Find(options...)
 }
 
-// Select is like Find but can choose what columns to retrieve.
+// Select creates a SELECT query with the specified columns. Unlike Find, the
+// result can be scanned into various types including slices, maps, and custom
+// structs.
 //
-// To put results into a slice of strings:
-//
+//	// Query into a slice of single values
 //	var names []string
-//	psql.NewModelTable("users", conn).Select("name").OrderBy("id ASC").MustQuery(&names)
+//	users.Select("name").OrderBy("id ASC").MustQuery(&names)
 //
-// To put results into a slice of custom struct:
+//	// Query into a slice of custom structs
+//	var results []struct{ Name string; ID int }
+//	users.Select("name", "id").MustQuery(&results)
 //
-//	var users []struct {
-//		name string
-//		id   int
-//	}
-//	psql.NewModelTable("users", conn).Select("name", "id").OrderBy("id ASC").MustQuery(&users)
-//
-// To group results by the key:
-//
+//	// Query into a map for key-value lookup
 //	var id2name map[int]string
-//	psql.NewModelTable("users", conn).Select("id", "name").MustQuery(&id2name)
+//	users.Select("id", "name").MustQuery(&id2name)
 //
-// If it is one-to-many, use slice as map's value:
-//
-//	var users map[[2]string][]struct {
-//		id   int
-//		name string
-//	}
-//	psql.NewModelTable("users", conn).Select("country, city, id, name").MustQuery(&users)
+//	// Query into a map with slice values for one-to-many grouping
+//	var byCity map[string][]struct{ ID int; Name string }
+//	users.Select("city", "id", "name").MustQuery(&byCity)
 func (m Model) Select(fields ...string) *SelectSQL {
 	return m.newSelect(fields...)
 }
 
-// Create a SELECT query statement with FROM items.
+// From creates a SELECT query with additional FROM items (tables or subqueries).
 func (m Model) From(items ...string) *SelectSQL {
 	return m.newSelect().From(items...)
 }
 
-// Create a SELECT query statement with joins.
+// Join creates a SELECT query with JOIN clauses.
 func (m Model) Join(expressions ...string) *SelectSQL {
 	return m.newSelect().Join(expressions...)
 }
 
-// Create a SELECT query statement with CTE (Common Table Expression).
+// With creates a SELECT query with a CTE (Common Table Expression).
 func (m Model) With(expression string, args ...interface{}) *SelectSQL {
 	return m.newSelect().With(expression, args...)
 }
 
-// Create a SELECT query statement with CTE (Common Table Expression).
+// WITH creates a SELECT query with a named CTE from another SelectSQL query.
 func (m Model) WITH(name string, sql *SelectSQL) *SelectSQL {
 	return m.newSelect().WITH(name, sql)
 }
 
-// Create a SELECT query statement with condition. Arguments should use
-// positonal parameters like $1, $2. If only one argument is provided, "$?" in
-// the condition will be replaced with the correct positonal parameter.
+// Where creates a SELECT query with a WHERE condition. Use $1, $2 for
+// positional parameters, or $? which is auto-replaced when a single argument
+// is provided.
 func (m Model) Where(condition string, args ...interface{}) *SelectSQL {
 	return m.newSelect().Where(condition, args...)
 }
 
-// Create a SELECT query statement with condition.
+// WHERE creates a SELECT query with conditions specified as field/operator/value
+// tuples. Each tuple consists of three consecutive arguments.
 //
-// The args parameter contains field name, operator, value tuples with each
-// tuple consisting of three consecutive elements: the field name as a string,
-// an operator symbol as a string (e.g. "=", ">", "<="), and the value to match
-// against that field.
+//	// Single condition
+//	users.WHERE("id", "=", 1)
 //
-// To generate a WHERE clause matching multiple fields, use more than one
-// set of field/operator/value tuples in the args array. For example,
-// WHERE("A", "=", 1, "B", "!=", 2) means "WHERE (A = 1) AND (B != 2)".
+//	// Multiple conditions (AND)
+//	users.WHERE("status", "=", "active", "age", ">=", 18)
 func (m Model) WHERE(args ...interface{}) *SelectSQL {
 	return m.newSelect().WHERE(args...)
 }
 
-// Create a SELECT query statement with all fields of a Model. Options can be
-// funtions like AddTableName or strings like "--no-reset" (use Select instead
-// of ResetSelect).
+// Find populates the SELECT clause with all columns from the Model's struct.
+// Options can include transformation functions like AddTableName or the string
+// "--no-reset" to append rather than replace existing columns.
 func (s *SelectSQL) Find(options ...interface{}) *SelectSQL {
 	fields := []string{}
 	for _, field := range s.model.modelFields {
@@ -172,7 +163,7 @@ func (s *SelectSQL) Find(options ...interface{}) *SelectSQL {
 	return s.ResetSelect(fields...)
 }
 
-// Create a UPDATE statement from Where().
+// Update converts this SelectSQL to an UpdateSQL, preserving WHERE conditions.
 func (s *SelectSQL) Update(lotsOfChanges ...interface{}) *UpdateSQL {
 	n := s.model.Update(lotsOfChanges...)
 	n.conditions = s.conditions
@@ -180,7 +171,7 @@ func (s *SelectSQL) Update(lotsOfChanges ...interface{}) *UpdateSQL {
 	return n
 }
 
-// Create a DELETE statement from Where().
+// Delete converts this SelectSQL to a DeleteSQL, preserving WHERE conditions.
 func (s *SelectSQL) Delete() *DeleteSQL {
 	n := s.model.Delete()
 	n.conditions = s.conditions
@@ -204,14 +195,13 @@ func (s *SelectSQL) MustExistsCtxTx(ctx context.Context, tx Tx) bool {
 	return exists
 }
 
-// Create and execute a SELECT 1 AS one statement. Returns true if record
-// exists, false if not exists.
+// Exists executes a SELECT 1 query and returns true if at least one row
+// matches the current conditions.
 func (s *SelectSQL) Exists() (exists bool, err error) {
 	return s.ExistsCtxTx(context.Background(), nil)
 }
 
-// Create and execute a SELECT 1 AS one statement. Returns true if record
-// exists, false if not exists.
+// ExistsCtxTx is like Exists but accepts a context and optional transaction.
 func (s *SelectSQL) ExistsCtxTx(ctx context.Context, tx Tx) (exists bool, err error) {
 	var ret int
 	err = s.ResetSelect("1 AS one").QueryRowCtxTx(ctx, tx, &ret)
@@ -237,14 +227,14 @@ func (s *SelectSQL) MustCountCtxTx(ctx context.Context, tx Tx, optional ...strin
 	return count
 }
 
-// Create and execute a SELECT COUNT(*) statement, return number of rows.
-// To count in a different way: Count("COUNT(DISTINCT authors.id)").
+// Count executes a SELECT COUNT(*) query and returns the number of matching
+// rows. Pass a custom expression for different counting, e.g.,
+// Count("COUNT(DISTINCT author_id)").
 func (s *SelectSQL) Count(optional ...string) (count int, err error) {
 	return s.CountCtxTx(context.Background(), nil, optional...)
 }
 
-// Create and execute a SELECT COUNT(*) statement, return number of rows.
-// To count in a different way: Count("COUNT(DISTINCT authors.id)").
+// CountCtxTx is like Count but accepts a context and optional transaction.
 func (s *SelectSQL) CountCtxTx(ctx context.Context, tx Tx, optional ...string) (count int, err error) {
 	var expr string
 	if len(optional) > 0 && optional[0] != "" {
@@ -256,13 +246,13 @@ func (s *SelectSQL) CountCtxTx(ctx context.Context, tx Tx, optional ...string) (
 	return
 }
 
-// Set expressions to SELECT statement.
+// ResetSelect replaces all SELECT columns with the given expressions.
 func (s *SelectSQL) ResetSelect(expressions ...string) *SelectSQL {
 	s.fields = expressions
 	return s
 }
 
-// Add expressions to SELECT statement, before any existing jsonb columns.
+// Select appends columns to the SELECT clause, inserting before JSONB columns.
 func (s *SelectSQL) Select(expressions ...string) *SelectSQL {
 	if s.jfCount > 0 {
 		idx := len(s.fields) - s.jfCount
@@ -273,7 +263,8 @@ func (s *SelectSQL) Select(expressions ...string) *SelectSQL {
 	return s
 }
 
-// Replace old field names in existing SELECT statement with new.
+// ReplaceSelect replaces occurrences of old column name with new in the
+// SELECT clause.
 func (s *SelectSQL) ReplaceSelect(old, new string) *SelectSQL {
 	for i := range s.fields {
 		if s.fields[i] == old {
@@ -283,15 +274,14 @@ func (s *SelectSQL) ReplaceSelect(old, new string) *SelectSQL {
 	return s
 }
 
-// Adds GROUP BY to SELECT statement.
+// GroupBy adds a GROUP BY clause to the query.
 func (s *SelectSQL) GroupBy(expressions ...string) *SelectSQL {
 	s.groupBy = strings.Join(expressions, ", ")
 	return s
 }
 
-// Adds HAVING to SELECT statement. Arguments should use positonal
-// parameters like $1, $2. If only one argument is provided, "$?" in the
-// condition will be replaced with the correct positonal parameter.
+// Having adds a HAVING clause to the query. Use $1, $2 for positional
+// parameters, or $? which is auto-replaced when a single argument is provided.
 func (s *SelectSQL) Having(condition string, args ...interface{}) *SelectSQL {
 	s.args = append(s.args, args...)
 	if len(args) == 1 {
@@ -301,13 +291,13 @@ func (s *SelectSQL) Having(condition string, args ...interface{}) *SelectSQL {
 	return s
 }
 
-// Adds ORDER BY to SELECT statement.
+// OrderBy adds an ORDER BY clause to the query.
 func (s *SelectSQL) OrderBy(expressions ...string) *SelectSQL {
 	s.orderBy = strings.Join(expressions, ", ")
 	return s
 }
 
-// Adds LIMIT to SELECT statement.
+// Limit adds a LIMIT clause to the query. Pass nil to remove the limit.
 func (s *SelectSQL) Limit(count interface{}) *SelectSQL {
 	if count == nil {
 		s.limit = ""
@@ -317,7 +307,7 @@ func (s *SelectSQL) Limit(count interface{}) *SelectSQL {
 	return s
 }
 
-// Adds OFFSET to SELECT statement.
+// Offset adds an OFFSET clause to the query. Pass nil to remove the offset.
 func (s *SelectSQL) Offset(start interface{}) *SelectSQL {
 	if start == nil {
 		s.offset = ""
@@ -327,9 +317,8 @@ func (s *SelectSQL) Offset(start interface{}) *SelectSQL {
 	return s
 }
 
-// Adds condition to SELECT statement. Arguments should use positonal
-// parameters like $1, $2. If only one argument is provided, "$?" in the
-// condition will be replaced with the correct positonal parameter.
+// Where adds a WHERE condition to the query. Multiple calls are combined with
+// AND. Use $1, $2 for positional parameters, or $? for auto-replacement.
 func (s *SelectSQL) Where(condition string, args ...interface{}) *SelectSQL {
 	s.args = append(s.args, args...)
 	if len(args) == 1 {
@@ -339,16 +328,9 @@ func (s *SelectSQL) Where(condition string, args ...interface{}) *SelectSQL {
 	return s
 }
 
-// WHERE adds conditions to SELECT statement from variadic inputs.
-//
-// The args parameter contains field name, operator, value tuples with each
-// tuple consisting of three consecutive elements: the field name as a string,
-// an operator symbol as a string (e.g. "=", ">", "<="), and the value to match
-// against that field.
-//
-// To generate a WHERE clause matching multiple fields, use more than one
-// set of field/operator/value tuples in the args array. For example,
-// WHERE("A", "=", 1, "B", "!=", 2) means "WHERE (A = 1) AND (B != 2)".
+// WHERE adds conditions from field/operator/value tuples. Each tuple consists
+// of three consecutive arguments: field name, operator, and value. Multiple
+// tuples are combined with AND.
 func (s *SelectSQL) WHERE(args ...interface{}) *SelectSQL {
 	for i := 0; i < len(args)/3; i++ {
 		var column string
@@ -368,13 +350,13 @@ func (s *SelectSQL) WHERE(args ...interface{}) *SelectSQL {
 	return s
 }
 
-// Clears existing FROM items and set new FROM items.
+// ResetFrom replaces the FROM clause with the given items.
 func (s *SelectSQL) ResetFrom(items ...string) *SelectSQL {
 	s.from = strings.Join(items, ", ")
 	return s
 }
 
-// Adds FROM items to SELECT statement.
+// From appends items to the FROM clause.
 func (s *SelectSQL) From(items ...string) *SelectSQL {
 	if s.from == "" {
 		s.from = s.model.tableName
@@ -386,13 +368,13 @@ func (s *SelectSQL) From(items ...string) *SelectSQL {
 	return s
 }
 
-// Clears existing JOIN statements and set new JOIN statements.
+// ResetJoin replaces all JOIN clauses with the given expressions.
 func (s *SelectSQL) ResetJoin(expressions ...string) *SelectSQL {
 	s.join = strings.Join(expressions, " ")
 	return s
 }
 
-// Adds join to SELECT statement.
+// Join appends JOIN clauses to the query.
 func (s *SelectSQL) Join(expressions ...string) *SelectSQL {
 	if s.join != "" && !strings.HasSuffix(s.join, " ") {
 		s.join += " "
@@ -401,7 +383,7 @@ func (s *SelectSQL) Join(expressions ...string) *SelectSQL {
 	return s
 }
 
-// Adds WITH to SELECT statement.
+// With adds a CTE (Common Table Expression) to the query.
 func (s *SelectSQL) With(expression string, args ...interface{}) *SelectSQL {
 	i := 1
 	for range args {
@@ -426,8 +408,8 @@ func (s *SelectSQL) With(expression string, args ...interface{}) *SelectSQL {
 	return s
 }
 
-// Adds WITH from another SELECT statement to SELECT statement.
-// You can add "AS MATERIALIZED" or "AS NOT MATERIALIZED" to the name.
+// WITH adds a named CTE from another SelectSQL query. The name can include
+// "AS MATERIALIZED" or "AS NOT MATERIALIZED" for PostgreSQL 12+.
 func (s *SelectSQL) WITH(name string, sql *SelectSQL) *SelectSQL {
 	sqlQuery := sql.String()
 	if offset := len(s.args); offset > 0 {
@@ -452,7 +434,8 @@ func (s *SelectSQL) WITH(name string, sql *SelectSQL) *SelectSQL {
 	return s
 }
 
-// Perform operations on the chain.
+// Tap applies transformation functions to this SelectSQL, enabling custom
+// method chaining.
 func (s *SelectSQL) Tap(funcs ...func(*SelectSQL) *SelectSQL) *SelectSQL {
 	for i := range funcs {
 		s = funcs[i](s)

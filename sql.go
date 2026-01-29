@@ -17,15 +17,32 @@ import (
 )
 
 var (
-	ErrInvalidTarget            = errors.New("target must be pointer of a struct, slice or map")
-	ErrNoConnection             = errors.New("no connection")
-	ErrNoSQL                    = errors.New("no sql statements to execute")
-	ErrTypeAssertionFailed      = errors.New("type assertion failed")
+	// ErrInvalidTarget is returned when Query receives a target that is not a
+	// pointer to a struct, slice, or map.
+	ErrInvalidTarget = errors.New("target must be pointer of a struct, slice or map")
+
+	// ErrNoConnection is returned when attempting to execute a query without
+	// a database connection set on the Model.
+	ErrNoConnection = errors.New("no connection")
+
+	// ErrNoSQL is returned when Execute is called with an empty SQL statement.
+	ErrNoSQL = errors.New("no sql statements to execute")
+
+	// ErrTypeAssertionFailed is returned when scanning a JSONB value fails
+	// due to an unexpected source type.
+	ErrTypeAssertionFailed = errors.New("type assertion failed")
+
+	// ErrUnsupportedExplainTarget is returned when Explain is called with a
+	// target type that is not supported (*string, io.Writer, logger.Logger,
+	// func(string), or func(...interface{})).
 	ErrUnsupportedExplainTarget = errors.New("unsupported explain target type")
 )
 
 type (
-	// SQL can be created with Model.NewSQL()
+	// SQL represents a SQL statement with parameter values. It provides methods
+	// for executing queries (Query, QueryRow) and statements (Execute). Create
+	// instances using Model.NewSQL or the query builder methods (Find, Select,
+	// Insert, Update, Delete).
 	SQL struct {
 		main interface {
 			String() string
@@ -38,6 +55,7 @@ type (
 		explainOptions []string
 	}
 
+	// Tx is an alias for db.Tx, representing a database transaction.
 	Tx = db.Tx
 
 	jsonbRaw map[string]json.RawMessage
@@ -45,7 +63,9 @@ type (
 	fieldsFunc = func([]string, string) []string
 )
 
-// Can be used in Find(), add table name to all field names.
+// AddTableName is a helper function that prefixes field names with the table
+// name. It can be passed to Find to disambiguate columns in JOIN queries.
+// Fields that already contain a dot are left unchanged.
 var AddTableName fieldsFunc = func(fields []string, tableName string) (out []string) {
 	for _, field := range fields {
 		if strings.Contains(field, ".") {
@@ -71,8 +91,8 @@ func (j *jsonbRaw) Scan(src interface{}) error { // necessary for github.com/lib
 	}
 }
 
-// Create new SQL with SQL statement as first argument, The rest
-// arguments are for any placeholder parameters in the statement.
+// NewSQL creates a new SQL statement with the given query string and parameter
+// values. Use $1, $2, etc. or $? as placeholders for parameters.
 func (m Model) NewSQL(sql string, values ...interface{}) *SQL {
 	return &SQL{
 		model:  &m,
@@ -81,7 +101,8 @@ func (m Model) NewSQL(sql string, values ...interface{}) *SQL {
 	}
 }
 
-// Perform operations on the chain.
+// Tap applies a series of functions to the SQL object, allowing method
+// chaining with custom transformations.
 func (s *SQL) Tap(funcs ...func(*SQL) *SQL) *SQL {
 	for i := range funcs {
 		s = funcs[i](s)
@@ -144,9 +165,9 @@ func (s SQL) MustQuery(target interface{}) {
 	}
 }
 
-// Query executes the SQL query and put the results into the target.
-// Target must be a pointer to a struct, a slice or a map.
-// For use cases, see Find() and Select().
+// Query executes the SQL query and scans results into target. Target must be
+// a pointer to a struct (single row), slice (multiple rows), or map (key-value
+// pairs). See Find and Select for examples.
 func (s SQL) Query(target interface{}) error {
 	return s.QueryCtxTx(context.Background(), nil, target)
 }
@@ -158,9 +179,7 @@ func (s SQL) MustQueryCtx(ctx context.Context, target interface{}) {
 	}
 }
 
-// QueryCtx executes the SQL query and put the results into the target.
-// Target must be a pointer to a struct, a slice or a map.
-// For use cases, see Find() and Select().
+// QueryCtx is like Query but accepts a context for cancellation and timeouts.
 func (s SQL) QueryCtx(ctx context.Context, target interface{}) error {
 	return s.QueryCtxTx(ctx, nil, target)
 }
@@ -172,9 +191,8 @@ func (s SQL) MustQueryCtxTx(ctx context.Context, tx Tx, target interface{}) {
 	}
 }
 
-// QueryCtxTx executes the SQL query and put the results into the target.
-// Target must be a pointer to a struct, a slice or a map.
-// For use cases, see Find() and Select().
+// QueryCtxTx is like Query but accepts a context and optional transaction.
+// If tx is non-nil, the query executes within that transaction.
 func (s SQL) QueryCtxTx(ctx context.Context, tx Tx, target interface{}) error {
 	if s.model.connection == nil {
 		return ErrNoConnection
@@ -372,14 +390,12 @@ func (s SQL) MustQueryRow(dest ...interface{}) {
 	}
 }
 
-// QueryRow gets results from the first row, and put values of each column to
-// corresponding dest. For use cases, see Insert().
+// QueryRow executes the query and scans the first row's columns into dest.
+// Each dest must be a pointer to a variable that can hold the column value.
 //
-//	var u struct {
-//		name string
-//		id   int
-//	}
-//	psql.NewModelTable("users", conn).Select("name, id").MustQueryRow(&u.name, &u.id)
+//	var name string
+//	var id int
+//	psql.NewModelTable("users", conn).Select("name", "id").MustQueryRow(&name, &id)
 func (s SQL) QueryRow(dest ...interface{}) error {
 	return s.QueryRowCtxTx(context.Background(), nil, dest...)
 }
@@ -391,8 +407,8 @@ func (s SQL) MustQueryRowCtx(ctx context.Context, dest ...interface{}) {
 	}
 }
 
-// QueryRowCtx gets results from the first row, and put values of each column
-// to corresponding dest. For use cases, see Insert().
+// QueryRowCtx is like QueryRow but accepts a context for cancellation and
+// timeouts.
 func (s SQL) QueryRowCtx(ctx context.Context, dest ...interface{}) error {
 	return s.QueryRowCtxTx(ctx, nil, dest...)
 }
@@ -405,8 +421,8 @@ func (s SQL) MustQueryRowCtxTx(ctx context.Context, tx Tx, dest ...interface{}) 
 	}
 }
 
-// QueryRowCtxTx gets results from the first row, and put values of each column
-// to corresponding dest. For use cases, see Insert().
+// QueryRowCtxTx is like QueryRow but accepts a context and optional
+// transaction. If tx is non-nil, the query executes within that transaction.
 func (s SQL) QueryRowCtxTx(ctx context.Context, tx Tx, dest ...interface{}) error {
 	if s.model.connection == nil {
 		return ErrNoConnection
@@ -433,9 +449,8 @@ func (s SQL) MustExecute(dest ...interface{}) {
 	}
 }
 
-// Execute executes a query without returning any rows by an UPDATE, INSERT, or
-// DELETE. You can get number of rows affected by providing pointer of int or
-// int64 to the optional dest. For use cases, see Update().
+// Execute runs an INSERT, UPDATE, or DELETE statement. To get the number of
+// rows affected, pass a pointer to an int or int64 as dest.
 func (s SQL) Execute(dest ...interface{}) error {
 	return s.ExecuteCtxTx(context.Background(), nil, dest...)
 }
@@ -447,9 +462,8 @@ func (s SQL) MustExecuteCtx(ctx context.Context, dest ...interface{}) {
 	}
 }
 
-// ExecuteCtx executes a query without returning any rows by an UPDATE,
-// INSERT, or DELETE. You can get number of rows affected by providing pointer
-// of int or int64 to the optional dest. For use cases, see Update().
+// ExecuteCtx is like Execute but accepts a context for cancellation and
+// timeouts.
 func (s SQL) ExecuteCtx(ctx context.Context, dest ...interface{}) error {
 	return s.ExecuteCtxTx(ctx, nil, dest...)
 }
@@ -461,9 +475,8 @@ func (s SQL) MustExecuteCtxTx(ctx context.Context, tx Tx, dest ...interface{}) {
 	}
 }
 
-// ExecuteCtxTx executes a query without returning any rows by an UPDATE,
-// INSERT, or DELETE. You can get number of rows affected by providing pointer
-// of int or int64 to the optional dest. For use cases, see Update().
+// ExecuteCtxTx is like Execute but accepts a context and optional transaction.
+// If tx is non-nil, the statement executes within that transaction.
 func (s SQL) ExecuteCtxTx(ctx context.Context, tx Tx, dest ...interface{}) error {
 	if s.model.connection == nil {
 		return ErrNoConnection

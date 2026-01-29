@@ -15,17 +15,16 @@ import (
 )
 
 type (
-	// Model is a database table and it is created from struct. Table name
-	// is inferred from struct's name, and converted to its the plural form
-	// using psql.TransformTableName by default. To use a different table
-	// name, define a __TABLE_NAME__ field in the struct and set the tag
-	// value as the table name, or add a "TableName() string" receiver
-	// method for the struct.
+	// Model represents a database table mapped from a Go struct.
 	//
-	// Column names are inferred from struct field names. To use a
-	// different column name, set the "column" tag for the field, or use
-	// SetColumnNamer() to define column namer function to transform all
-	// field names in this model.
+	// Table names are inferred from the struct name and converted to plural form
+	// by default (e.g., User becomes users). To customize the table name:
+	//   - Define a __TABLE_NAME__ field with the table name as its tag value
+	//   - Implement a TableName() string method on the struct
+	//
+	// Column names are inferred from struct field names. To customize:
+	//   - Use the "column" struct tag for individual fields
+	//   - Call SetColumnNamer to set a naming function for all fields
 	Model struct {
 		connection         db.DB
 		logger             logger.Logger
@@ -41,24 +40,30 @@ type (
 		jsonbColumns []string
 	}
 
+	// Field represents a mapping between a struct field and a database column.
 	Field struct {
-		Name       string // struct field name
-		ColumnName string // column name (or jsonb key name) in database
-		ColumnType string // column type
-		JsonName   string // key name in json input and output
-		Jsonb      string // jsonb column name in database
-		DataType   string // data type in database
-		Exported   bool   // false if field name is lower case (unexported)
-		Strict     bool   // jsonb: raise json unmarshal error if set to true
-		Parent     string // parent struct name if anonymous is set
+		Name       string // Name is the struct field name.
+		ColumnName string // ColumnName is the database column name (or JSONB key).
+		ColumnType string // ColumnType is the Go type as a string (e.g., "int", "string").
+		JsonName   string // JsonName is the key name used in JSON input/output.
+		Jsonb      string // Jsonb is the JSONB column name if this field is stored in JSONB.
+		DataType   string // DataType is the PostgreSQL data type from the dataType tag.
+		Exported   bool   // Exported is true if the struct field is exported (capitalized).
+		Strict     bool   // Strict enables JSON unmarshal error reporting for JSONB fields.
+		Parent     string // Parent is the parent struct path for anonymous/embedded fields.
 	}
 )
 
 var (
+	// ErrMustBePointer is returned when a function expects a pointer argument
+	// but receives a non-pointer value.
 	ErrMustBePointer = errors.New("must be pointer")
 )
 
-// Initialize a Model from a struct. For available options, see SetOptions().
+// NewModel creates a new Model from a struct. The struct defines the table
+// schema, with field names mapped to column names. Options can include a db.DB
+// connection and/or a logger.Logger for query logging. See SetOptions for
+// details on available options.
 func NewModel(object interface{}, options ...interface{}) (m *Model) {
 	m = &Model{
 		modelInfo: &modelInfo{
@@ -74,12 +79,13 @@ func NewModel(object interface{}, options ...interface{}) (m *Model) {
 	return
 }
 
-// Initialize a Model by defining table name only. Useful if you are calling
-// functions that don't need fields, for example:
+// NewModelTable creates a new Model with only a table name, without struct
+// field mappings. This is useful for operations that don't require field
+// information, such as counting rows or executing raw SQL:
 //
 //	psql.NewModelTable("users", conn).MustCount()
 //
-// For available options, see SetOptions().
+// Options can include a db.DB connection and/or a logger.Logger.
 func NewModelTable(tableName string, options ...interface{}) (m *Model) {
 	m = &Model{
 		modelInfo: &modelInfo{
@@ -112,12 +118,13 @@ func (m Model) String() string {
 		strconv.Itoa(len(m.modelFields)) + " modelFields"
 }
 
-// Table name of the Model.
+// TableName returns the database table name for this Model.
 func (m Model) TableName() string {
 	return m.tableName
 }
 
-// Type name of the Model.
+// TypeName returns the Go struct type name for this Model, or an empty string
+// if the Model was created with NewModelTable.
 func (m Model) TypeName() string {
 	if m.structType != nil {
 		return m.structType.Name()
@@ -125,7 +132,8 @@ func (m Model) TypeName() string {
 	return ""
 }
 
-// Get field by struct field name, nil will be returned if no such field.
+// FieldByName returns the Field with the given struct field name, or nil if
+// no such field exists.
 func (m Model) FieldByName(name string) *Field {
 	for _, f := range m.modelFields {
 		if f.Name == name {
@@ -135,7 +143,8 @@ func (m Model) FieldByName(name string) *Field {
 	return nil
 }
 
-// Column names of the Model.
+// Columns returns all database column names for this Model, including JSONB
+// columns but excluding fields stored within JSONB columns.
 func (m Model) Columns() []string {
 	columns := []string{}
 	for _, f := range m.modelFields {
@@ -158,6 +167,8 @@ type (
 	}
 )
 
+// ColumnDataTypes returns a map of column names to their PostgreSQL data type
+// definitions. This is used by Schema to generate CREATE TABLE statements.
 func (m Model) ColumnDataTypes() map[string]string {
 	var dbDataTypeFunc fieldDataTypeFunc
 	if c, ok := m.connection.(hasFieldDataTypeFunc); ok {
@@ -199,7 +210,10 @@ func (m Model) ColumnDataTypes() map[string]string {
 	return dataTypes
 }
 
-// Generate CREATE TABLE SQL statement from a Model.
+// Schema generates a CREATE TABLE SQL statement from the Model's struct
+// definition.
+//
+// Go types are mapped to PostgreSQL types as follows:
 //
 //	| Go Type                                        | PostgreSQL Data Type |
 //	|------------------------------------------------|----------------------|
@@ -210,12 +224,13 @@ func (m Model) ColumnDataTypes() map[string]string {
 //	| bool                                           | boolean              |
 //	| other                                          | text                 |
 //
-// You can use "dataType" tag to customize the data type. "NOT NULL" is added
-// if the struct field is not a pointer. You can also set SQL statements before
-// or after this statement by defining "BeforeCreateSchema() string" (for
-// example the CREATE EXTENSION statement) or "AfterCreateSchema() string" (for
-// example the CREATE INDEX statement) function for the struct.
-// Set dataType to "-" to ignore this field in migration.
+// Use the "dataType" struct tag to specify a custom PostgreSQL data type.
+// Non-pointer fields automatically include "NOT NULL". Set dataType to "-"
+// to exclude a field from schema generation.
+//
+// The struct may implement BeforeCreateSchema() string to prepend SQL (e.g.,
+// CREATE EXTENSION) or AfterCreateSchema() string to append SQL (e.g.,
+// CREATE INDEX).
 //
 //	psql.NewModel(struct {
 //		__TABLE_NAME__ string `users`
@@ -269,7 +284,9 @@ func (m Model) Schema() string {
 	return before + "CREATE TABLE " + m.tableName + " (\n" + strings.Join(sql, ",\n") + "\n);\n" + after
 }
 
-// Generate DROP TABLE ("DROP TABLE IF EXISTS <table_name>;") SQL statement from a Model.
+// DropSchema generates a DROP TABLE IF EXISTS SQL statement for this Model's
+// table. If the struct implements DropSchema() string, that method is called
+// instead.
 func (m Model) DropSchema() string {
 	if m.structType != nil {
 		n := m.New().Interface()
@@ -317,7 +334,9 @@ func (m Model) JSONBFields() []string {
 	return fields
 }
 
-// AddTableName adds table name to fields.
+// AddTableName prefixes each field name with the table name (e.g., "id"
+// becomes "tablename.id"). This is useful for queries involving multiple
+// tables to avoid column name ambiguity.
 func (m Model) AddTableName(fields ...string) []string {
 	out := make([]string, len(fields))
 	for i, field := range fields {
@@ -362,20 +381,23 @@ func (m *Model) SetOptions(options ...interface{}) *Model {
 	return m
 }
 
-// Return database connection for the Model.
+// Connection returns the database connection for this Model.
 func (m *Model) Connection() db.DB {
 	return m.connection
 }
 
-// Change the column namer function for the Model.
+// SetColumnNamer sets a function to transform struct field names into database
+// column names. The function is applied to all fields when called. Pass nil to
+// use field names as-is.
 func (m *Model) SetColumnNamer(namer func(string) string) *Model {
 	m.setColumnNamer(namer)
 	m.updateColumnNames(m.structType)
 	return m
 }
 
-// Set a database connection for the Model. ErrNoConnection is returned if no
-// connection is set.
+// SetConnection sets the database connection for this Model. A connection is
+// required for executing queries; ErrNoConnection is returned from query
+// methods if no connection is set.
 func (m *Model) SetConnection(db db.DB) *Model {
 	m.connection = db
 	return m
@@ -388,14 +410,14 @@ func (m *Model) convertValues(sql string, values []interface{}) (string, []inter
 	return sql, values
 }
 
-// Return the logger for the Model.
+// Logger returns the logger for this Model, or nil if no logger is set.
 func (m *Model) Logger() logger.Logger {
 	return m.logger
 }
 
-// Set the logger for the Model. Use logger.StandardLogger if you want to use
-// Go's built-in standard logging package. By default, no logger is used, so
-// the SQL statements are not printed to the console.
+// SetLogger sets the logger for SQL query logging. Use logger.StandardLogger
+// to log to the standard library's log package. By default, no logger is set
+// and SQL statements are not logged. Pass nil to disable logging.
 func (m *Model) SetLogger(logger logger.Logger) *Model {
 	m.logger = logger
 	return m
@@ -417,14 +439,13 @@ func (m Model) MustExistsCtxTx(ctx context.Context, tx Tx) bool {
 	return exists
 }
 
-// Create and execute a SELECT 1 AS one statement. Returns true if record
-// exists, false if not exists.
+// Exists executes a SELECT 1 query and returns true if at least one row
+// matches any WHERE conditions set on the Model, false otherwise.
 func (m Model) Exists() (exists bool, err error) {
 	return m.ExistsCtxTx(context.Background(), nil)
 }
 
-// Create and execute a SELECT 1 AS one statement. Returns true if record
-// exists, false if not exists.
+// ExistsCtxTx is like Exists but accepts a context and optional transaction.
 func (m Model) ExistsCtxTx(ctx context.Context, tx Tx) (exists bool, err error) {
 	return m.newSelect().ExistsCtxTx(ctx, tx)
 }
@@ -443,12 +464,14 @@ func (m Model) MustCountCtxTx(ctx context.Context, tx Tx, optional ...string) in
 	return count
 }
 
-// Create and execute a SELECT COUNT(*) statement, return number of rows.
+// Count executes a SELECT COUNT(*) query and returns the number of rows
+// matching any WHERE conditions set on the Model. Pass a custom expression
+// for different counting, e.g., Count("COUNT(DISTINCT author_id)").
 func (m Model) Count(optional ...string) (count int, err error) {
 	return m.CountCtxTx(context.Background(), nil, optional...)
 }
 
-// Create and execute a SELECT COUNT(*) statement, return number of rows.
+// CountCtxTx is like Count but accepts a context and optional transaction.
 func (m Model) CountCtxTx(ctx context.Context, tx Tx, optional ...string) (count int, err error) {
 	return m.newSelect().CountCtxTx(ctx, tx, optional...)
 }
@@ -462,7 +485,10 @@ func (m Model) MustAssign(i interface{}, lotsOfChanges ...interface{}) []interfa
 	return out
 }
 
-// Assign changes to target object. Useful if you want to validate your struct.
+// Assign applies changes to a target struct. This is useful when you need to
+// validate the struct before inserting or updating. The target must be a
+// pointer to a struct. Returns the changes as a slice suitable for passing
+// to Insert or Update.
 //
 //	func create(c echo.Context) error {
 //		var user models.User
@@ -554,7 +580,9 @@ func (m Model) log(sql string, args []interface{}, elapsed time.Duration) {
 	m.logger.Debug(colored, args, coloredElapsed)
 }
 
-// Function to convert field name to name used in database.
+// ToColumnName converts a struct field name to a database column name using
+// the configured column namer function. If no namer is set, returns the input
+// unchanged.
 func (mi modelInfo) ToColumnName(in string) string {
 	if mi.columnNamer == nil {
 		return in

@@ -7,7 +7,8 @@ import (
 )
 
 type (
-	// InsertSQL can be created with Model.NewSQL().AsInsert()
+	// InsertSQL represents an INSERT statement builder. Create instances using
+	// Model.Insert or SQL.AsInsert.
 	InsertSQL struct {
 		*SQL
 		changes          []interface{}
@@ -19,7 +20,8 @@ type (
 	}
 )
 
-// Convert SQL to InsertSQL. The optional fields will be used in DoUpdateAll().
+// AsInsert converts a raw SQL statement to an InsertSQL builder with the given
+// changes.
 func (s SQL) AsInsert(changes ...interface{}) *InsertSQL {
 	i := &InsertSQL{
 		SQL:     &s,
@@ -29,60 +31,64 @@ func (s SQL) AsInsert(changes ...interface{}) *InsertSQL {
 	return i
 }
 
-// Insert builds an INSERT INTO statement with fields and values in the
-// changes.
+// Insert creates an INSERT statement with the given field/value changes.
+// Changes can be field name and value pairs, or Changes maps from Filter,
+// Permit, etc.
 //
-//	var id int
-//	m.Insert(changes...).Returning("id").MustQueryRow(&id)
+//	// Using field/value pairs
+//	users.Insert("Name", "Alice", "Email", "alice@example.com").MustExecute()
 //
-// Changes can be a list of field name and value pairs and can also be obtained
-// from methods like Changes(), FieldChanges(), Assign(), Bind(), Filter().
-//
-//	m.Insert("FieldA", 123, "FieldB", "other").MustExecute()
+//	// Using Changes from Filter
+//	changes := users.Permit("Name", "Email").Filter(input)
+//	users.Insert(changes).Returning("id").MustQueryRow(&id)
 func (m Model) Insert(lotsOfChanges ...interface{}) *InsertSQL {
 	return m.NewSQL("").AsInsert(lotsOfChanges...)
 }
 
-// Adds RETURNING clause to INSERT INTO statement.
+// Returning adds a RETURNING clause to retrieve values from inserted rows.
 func (s *InsertSQL) Returning(expressions ...string) *InsertSQL {
 	s.outputExpression = strings.Join(expressions, ", ")
 	return s
 }
 
-// Used with DoNothing(), DoUpdate() or DoUpdateAll().
+// OnConflict specifies conflict target columns for upsert operations. Use with
+// DoNothing, DoUpdate, or DoUpdateAll.
 func (s *InsertSQL) OnConflict(targets ...string) *InsertSQL {
 	s.conflictTargets = append([]string{}, targets...)
 	return s
 }
 
-// Used with OnConflict(), adds ON CONFLICT DO NOTHING clause to INSERT INTO
-// statement.
+// DoNothing adds ON CONFLICT DO NOTHING, ignoring rows that conflict. Must be
+// used after OnConflict.
 func (s *InsertSQL) DoNothing() *InsertSQL {
 	s.conflictActions = []string{}
 	return s
 }
 
-// Used with OnConflict(), adds custom expressions ON CONFLICT ... DO UPDATE
-// SET ... clause to INSERT INTO statement.
+// DoUpdate adds ON CONFLICT DO UPDATE SET with custom expressions. Must be
+// used after OnConflict.
 func (s *InsertSQL) DoUpdate(expressions ...string) *InsertSQL {
 	s.conflictActions = append(s.conflictActions, expressions...)
 	return s
 }
 
-// DoUpdateAll is like DoUpdate but update every field.
+// DoUpdateAll adds ON CONFLICT DO UPDATE SET for all inserted fields. Must be
+// used after OnConflict.
 func (s *InsertSQL) DoUpdateAll() *InsertSQL {
 	s.updateAll = true
 	return s
 }
 
-// DoUpdateAllExcept is like DoUpdateAll but except some field names.
+// DoUpdateAllExcept is like DoUpdateAll but excludes specified fields from
+// the update.
 func (s *InsertSQL) DoUpdateAllExcept(fields ...string) *InsertSQL {
 	s.updateAll = false
 	s.updateAllExcept = append(s.updateAllExcept, fields...)
 	return s
 }
 
-// Perform operations on the chain.
+// Tap applies transformation functions to this InsertSQL, enabling custom
+// method chaining.
 func (s *InsertSQL) Tap(funcs ...func(*InsertSQL) *InsertSQL) *InsertSQL {
 	for i := range funcs {
 		s = funcs[i](s)
